@@ -18,17 +18,16 @@ def check_ffmpeg():
         subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
         return True
     except Exception:
-        QtWidgets.QMessageBox.warning(None, "ffmpeg benötigt",
-                                      "Dieses Programm benötigt ffmpeg. Bitte installiere es (z. B. via winget).")
+        QtWidgets.QMessageBox.warning(None, "ffmpeg required",
+                                      "This Programm requires ffmpeg to merge File formats")
         return False
 
 def install_ffmpeg():
     try:
         subprocess.run(["winget", "install", "Gyan.FFmpeg.Essentials", "-e", "--silent"], check=True)
-        QtWidgets.QMessageBox.information(None, "Erfolg", "ffmpeg wurde erfolgreich installiert. Bitte starte das Programm neu.")
-        sys.exit(app.exec_())
+        QtWidgets.QMessageBox.information(None, "Succes", "ffmpeg was successfully installed, please restart the Program")
     except Exception as e:
-        QtWidgets.QMessageBox.critical(None, "Fehler", f"ffmpeg-Installation fehlgeschlagen:\n{e}")
+        QtWidgets.QMessageBox.critical(None, "Error", f"ffmpeg-Installation failed :\n{e}")
         sys.exit(app.exec_())
 
 # ------------------------------------------
@@ -110,7 +109,7 @@ class DownloadWorker(QtCore.QThread):
 
     def progress_hook(self, d):
         if self._cancelled:
-            raise Exception("Download abgebrochen vom Benutzer.")
+            raise Exception("Download cancelled by User")
         while self._paused:
             time.sleep(0.2)
         if d.get('status') == 'downloading':
@@ -119,7 +118,7 @@ class DownloadWorker(QtCore.QThread):
             percent = (downloaded / total * 100) if total else 0
             self.progress_signal.emit(percent, f"Lädt... {percent:.2f}%")
         elif d.get('status') == 'finished':
-            self.progress_signal.emit(100, "Fertig, verarbeite...")
+            self.progress_signal.emit(100, "Ready, processing")
 
     def run(self):
         ydl_opts = {
@@ -131,18 +130,18 @@ class DownloadWorker(QtCore.QThread):
             'noplaylist': True,
         }
         # Anpassung je nach Format und einstellbaren Parametern:
-        if self.fmt in ["mp4 (mit Audio)", "avi", "mkv"]:
+        if self.fmt in ["mp4 (with Audio)", "avi", "mkv"]:
             # Für Formate mit Video und Audio: Beide Parameter werden berücksichtigt.
             if self.video_quality == "best":
                 ydl_opts['format'] = "bestvideo+bestaudio/best"
             else:
                 ydl_opts['format'] = f"bestvideo[height<={self.video_quality}]+bestaudio/best[height<={self.video_quality}]"
-            if self.fmt == "mp4 (mit Audio)":
+            if self.fmt == "mp4 (with Audio)":
                 ydl_opts['merge_output_format'] = "mp4"
                 ydl_opts['postprocessor_args'] = ['-c', 'copy']
             else:
                 ydl_opts['merge_output_format'] = self.fmt.split()[0].lower()
-        elif self.fmt == "mp4 (ohne Audio)":
+        elif self.fmt == "mp4 (without Audio)":
             if self.video_quality == "best":
                 ydl_opts['format'] = "bestvideo"
             else:
@@ -208,14 +207,14 @@ class MainWindow(QtWidgets.QMainWindow):
         folder_layout = QtWidgets.QHBoxLayout()
         self.folder_edit = QtWidgets.QLineEdit()
         self.folder_edit.setText(config["DownloadOptions"].get("download_folder", os.path.expanduser("~")))
-        folder_button = QtWidgets.QPushButton("Ordner wählen")
+        folder_button = QtWidgets.QPushButton("Choose Folder")
         folder_button.clicked.connect(self.select_folder)
         folder_layout.addWidget(self.folder_edit)
         folder_layout.addWidget(folder_button)
-        form_layout.addRow("Download-Ordner:", folder_layout)
+        form_layout.addRow("Download-Folder:", folder_layout)
 
         self.format_combo = QtWidgets.QComboBox()
-        self.format_combo.addItems(["mp4 (mit Audio)", "mp4 (ohne Audio)", "mp3", "avi", "mkv"])
+        self.format_combo.addItems(["mp4 (with Audio)", "mp4 (without Audio", "mp3", "avi", "mkv"])
         self.format_combo.currentIndexChanged.connect(self.update_quality_ui)
         form_layout.addRow("Format:", self.format_combo)
 
@@ -228,7 +227,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Bei "mp4 (mit Audio)" sollen beide Gruppen angezeigt werden:
         self.quality_widget = QtWidgets.QWidget()
         quality_layout = QtWidgets.QHBoxLayout(self.quality_widget)
-        self.video_group = QtWidgets.QGroupBox("Videoqualität (max. Höhe)")
+        self.video_group = QtWidgets.QGroupBox("Videoqualiy (max. Height")
         v_layout = QtWidgets.QHBoxLayout(self.video_group)
         v_layout.addWidget(self.video_quality_combo)
         self.audio_group = QtWidgets.QGroupBox("Audio-Bitrate (kbps)")
@@ -236,7 +235,7 @@ class MainWindow(QtWidgets.QMainWindow):
         a_layout.addWidget(self.audio_quality_combo)
         quality_layout.addWidget(self.video_group)
         quality_layout.addWidget(self.audio_group)
-        form_layout.addRow("Qualitätseinstellungen:", self.quality_widget)
+        form_layout.addRow("Qualitysettings:", self.quality_widget)
         self.update_quality_ui()
 
         main_layout.addLayout(form_layout)
@@ -245,7 +244,7 @@ class MainWindow(QtWidgets.QMainWindow):
         top_action_layout = QtWidgets.QVBoxLayout()
         self.title_label = QtWidgets.QLabel("Titel: -")
         top_action_layout.addWidget(self.title_label)
-        self.download_button = QtWidgets.QPushButton("Download starten")
+        self.download_button = QtWidgets.QPushButton("Start Download")
         self.download_button.clicked.connect(self.start_download)
         top_action_layout.addWidget(self.download_button)
         main_layout.addLayout(top_action_layout)
@@ -257,7 +256,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Tabelle für Mehrfach-Downloads
         self.download_table = QtWidgets.QTableWidget(0, 4)
-        self.download_table.setHorizontalHeaderLabels(["Titel", "Status", "Fortschritt", "Aktionen"])
+        self.download_table.setHorizontalHeaderLabels(["Titel", "Status", "Progress", "Actions"])
         self.download_table.horizontalHeader().setStretchLastSection(True)
         self.download_table.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.download_table.customContextMenuRequested.connect(self.show_context_menu)
@@ -267,7 +266,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.download_progress = {}  # {row: Prozentwert}
 
     def select_folder(self):
-        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Ordner wählen")
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Choose Folder")
         if folder:
             self.folder_edit.setText(folder)
             config["DownloadOptions"]["download_folder"] = folder
@@ -279,7 +278,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if fmt == "mp3":
             self.video_group.hide()
             self.audio_group.show()
-        elif fmt == "mp4 (ohne Audio)":
+        elif fmt == "mp4 (without Audio)":
             self.video_group.show()
             self.audio_group.hide()
         elif fmt in ["avi", "mkv"]:
@@ -292,11 +291,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def start_download(self):
         url = self.url_edit.text().strip()
         if not url:
-            QtWidgets.QMessageBox.critical(self, "Fehler", "Bitte eine gültige URL eingeben.")
+            QtWidgets.QMessageBox.critical(self, "Error", "Please put in a valid File URL.")
             return
         folder = self.folder_edit.text().strip()
         if not folder:
-            QtWidgets.QMessageBox.critical(self, "Fehler", "Bitte einen Download-Ordner wählen.")
+            QtWidgets.QMessageBox.critical(self, "Error", "Please Choose a Download Folder")
             return
         fmt = self.format_combo.currentText()
         if fmt == "mp3":
@@ -315,10 +314,10 @@ class MainWindow(QtWidgets.QMainWindow):
         worker = DownloadWorker(url, folder, fmt, video_quality, audio_bitrate, config["DownloadOptions"])
         row = self.download_table.rowCount()
         self.download_table.insertRow(row)
-        title_item = QtWidgets.QTableWidgetItem("Lade Metadaten...")
-        status_item = QtWidgets.QTableWidgetItem("Wartend")
+        title_item = QtWidgets.QTableWidgetItem("Loading Metadata...")
+        status_item = QtWidgets.QTableWidgetItem("Waiting...")
         progress_item = QtWidgets.QTableWidgetItem("0%")
-        action_item = QtWidgets.QTableWidgetItem("Rechtsklick für Optionen")
+        action_item = QtWidgets.QTableWidgetItem("Right click for Options")
         self.download_table.setItem(row, 0, title_item)
         self.download_table.setItem(row, 1, status_item)
         self.download_table.setItem(row, 2, progress_item)
@@ -337,11 +336,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.download_table.item(row, 1).setText(status)
         self.download_table.item(row, 2).setText(f"{progress:.2f}%")
         # Farbe je nach Status setzen:
-        if "Pausiert" in status:
+        if "Paused" in status:
             color = QtGui.QColor("#F1C40F")  # Gelb
-        elif "abgebrochen" in status or "Abbruch" in status:
+        elif "cancelled" in status or "Cancel" in status:
             color = QtGui.QColor("#E74C3C")  # Rot
-        elif "Fertig" in status:
+        elif "Finished" in status:
             color = QtGui.QColor("#2ECC71")  # Grün
         else:
             color = QtGui.QColor("#95A5A6")  # Grau (läuft)
@@ -357,12 +356,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.overall_progress_bar.setValue(int(overall))
 
     def download_finished(self, row):
-        self.download_table.item(row, 1).setText("Fertig")
+        self.download_table.item(row, 1).setText("Finished")
         self.download_progress[row] = 100
         self.update_overall_progress()
 
     def download_error(self, row, err):
-        self.download_table.item(row, 1).setText(f"Fehler: {err}")
+        self.download_table.item(row, 1).setText(f"Error: {err}")
         self.download_progress[row] = 0
         self.update_overall_progress()
 
@@ -376,21 +375,21 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         menu = QtWidgets.QMenu()
         if worker._paused:
-            pause_action = menu.addAction("Fortsetzen")
+            pause_action = menu.addAction("Continue")
         else:
-            pause_action = menu.addAction("Pausieren")
-        cancel_action = menu.addAction("Abbrechen")
+            pause_action = menu.addAction("Pause")
+        cancel_action = menu.addAction("Cancel")
         action = menu.exec_(self.download_table.viewport().mapToGlobal(pos))
         if action == pause_action:
             if worker._paused:
                 worker.resume()
-                self.download_table.item(row, 1).setText("Fortgesetzt")
+                self.download_table.item(row, 1).setText("continued")
             else:
                 worker.pause()
-                self.download_table.item(row, 1).setText("Pausiert")
+                self.download_table.item(row, 1).setText("Paused")
         elif action == cancel_action:
             worker.cancel()
-            self.download_table.item(row, 1).setText("Abgebrochen")
+            self.download_table.item(row, 1).setText("cancelled")
             # Lösche eventuell vorhandene Part-Dateien:
             if worker.current_outtmpl:
                 part_file = worker.current_outtmpl + ".part"
@@ -404,8 +403,8 @@ def main():
     import sys
     app = QtWidgets.QApplication(sys.argv)
     if not check_ffmpeg():
-        install = QtWidgets.QMessageBox.question(None, "ffmpeg fehlt",
-                                                 "ffmpeg ist nicht installiert. Jetzt installieren?",
+        install = QtWidgets.QMessageBox.question(None, "ffmpeg missing",
+                                                 "ffmpeg is not installed. Install now?",
                                                  QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
         if install == QtWidgets.QMessageBox.Yes:
             install_ffmpeg()
