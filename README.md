@@ -5,6 +5,8 @@
 
 A PyQt5-based UI video downloader that leverages [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video extraction and downloading. The application provides an easy to use graphical user interface with usefull Costumization Settings 
 
+![Look at the UI :)](screenshots/ui.png)
+
 ## Features
 
 - **Video Downloading:** You can Download Videos and Audio from most Websites.
