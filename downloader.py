@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import time
 import configparser
 import requests
@@ -8,10 +9,10 @@ import yt_dlp
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 CONFIG_FILE = "download_config.ini"
-TEST_URL = "https://ipv4.download.thinkbroadband.com/1MB.zip"  # 1MB-Datei für Speedtest
+TEST_URL = "https://ipv4.download.thinkbroadband.com/1MB.zip"  # 1MB test file for speed test
 
 # -------------------------------
-# ffmpeg-Check und Installation
+# ffmpeg Check and Installation
 # -------------------------------
 def check_ffmpeg():
     try:
@@ -19,19 +20,19 @@ def check_ffmpeg():
         return True
     except Exception:
         QtWidgets.QMessageBox.warning(None, "ffmpeg required",
-                                      "This Programm requires ffmpeg to merge File formats")
+                                      "This program requires ffmpeg to merge file formats.")
         return False
 
 def install_ffmpeg():
     try:
         subprocess.run(["winget", "install", "Gyan.FFmpeg.Essentials", "-e", "--silent"], check=True)
-        QtWidgets.QMessageBox.information(None, "Succes", "ffmpeg was successfully installed, please restart the Program")
+        QtWidgets.QMessageBox.information(None, "Success", "ffmpeg was successfully installed. Please restart the program.")
     except Exception as e:
-        QtWidgets.QMessageBox.critical(None, "Error", f"ffmpeg-Installation failed :\n{e}")
-        sys.exit(app.exec_())
+        QtWidgets.QMessageBox.critical(None, "Error", f"ffmpeg installation failed:\n{e}")
+        sys.exit(1)
 
 # ------------------------------------------
-# Netzwerk Speed Test und Konfigurationsverwaltung
+# Network Speed Test and Config Management
 # ------------------------------------------
 def network_speed_test():
     try:
@@ -78,15 +79,70 @@ def load_or_create_config():
 config = load_or_create_config()
 
 # -------------------------------
+# Metadata Worker (QThread)
+# -------------------------------
+class MetadataWorker(QtCore.QThread):
+    metadata_signal = QtCore.pyqtSignal(dict)
+    error_signal = QtCore.pyqtSignal(str)
+
+    def __init__(self, url, parent=None):
+        super().__init__(parent)
+        self.url = url
+
+    def run(self):
+        # Minimal options for fast metadata extraction:
+        ydl_opts = {
+            'simulate': True,
+            'quiet': True,
+            'no_warnings': True,
+            'skip_download': True
+        }
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(self.url, download=False, process=False)
+            title = info.get('title', '')
+            thumb_url = info.get('thumbnail', '')
+            filesize = info.get('filesize') or info.get('filesize_approx')
+            if filesize:
+                size = filesize
+                for unit in ['B', 'KB', 'MB', 'GB']:
+                    if size < 1024:
+                        filesize_str = f"{size:.2f} {unit}"
+                        break
+                    size /= 1024
+                else:
+                    filesize_str = f"{size:.2f} TB"
+            else:
+                filesize_str = "Unknown"
+            pixmap = None
+            if thumb_url:
+                try:
+                    response = requests.get(thumb_url, timeout=5)
+                    image_data = response.content
+                    image = QtGui.QImage()
+                    image.loadFromData(image_data)
+                    pixmap = QtGui.QPixmap.fromImage(image)
+                except Exception:
+                    pixmap = None
+            self.metadata_signal.emit({
+                "title": title,
+                "thumbnail": pixmap,
+                "filesize": filesize_str
+            })
+        except Exception as e:
+            self.error_signal.emit(str(e))
+
+# -------------------------------
 # Download Worker (QThread)
 # -------------------------------
 class DownloadWorker(QtCore.QThread):
-    progress_signal = QtCore.pyqtSignal(float, str)  # Fortschritt in % und Status-Text
+    progress_signal = QtCore.pyqtSignal(float, str)
     finished_signal = QtCore.pyqtSignal()
     error_signal = QtCore.pyqtSignal(str)
     title_signal = QtCore.pyqtSignal(str)
+    size_signal = QtCore.pyqtSignal(str)
 
-    def __init__(self, url, folder, fmt, video_quality, audio_bitrate, net_config, parent=None):
+    def __init__(self, url, folder, fmt, video_quality, audio_bitrate, net_config, cached_metadata=None, parent=None):
         super().__init__(parent)
         self.url = url
         self.folder = folder
@@ -94,9 +150,23 @@ class DownloadWorker(QtCore.QThread):
         self.video_quality = video_quality
         self.audio_bitrate = audio_bitrate
         self.net_config = net_config
+        self.cached_metadata = cached_metadata
         self._paused = False
         self._cancelled = False
-        self.current_outtmpl = None  # wird gesetzt, sobald Metadaten bekannt sind
+        self.current_outtmpl = None
+
+    def progress_hook(self, d):
+        if self._cancelled:
+            raise Exception("Cancelled")
+        while self._paused:
+            time.sleep(0.2)
+        if d.get('status') == 'downloading':
+            total = d.get('total_bytes') or d.get('total_bytes_estimate')
+            downloaded = d.get('downloaded_bytes', 0)
+            percent = (downloaded / total * 100) if total else 0
+            self.progress_signal.emit(percent, "Downloading")
+        elif d.get('status') == 'finished':
+            self.progress_signal.emit(100, "Finished")
 
     def pause(self):
         self._paused = True
@@ -107,19 +177,6 @@ class DownloadWorker(QtCore.QThread):
     def cancel(self):
         self._cancelled = True
 
-    def progress_hook(self, d):
-        if self._cancelled:
-            raise Exception("Download cancelled by User")
-        while self._paused:
-            time.sleep(0.2)
-        if d.get('status') == 'downloading':
-            total = d.get('total_bytes') or d.get('total_bytes_estimate')
-            downloaded = d.get('downloaded_bytes', 0)
-            percent = (downloaded / total * 100) if total else 0
-            self.progress_signal.emit(percent, f"Lädt... {percent:.2f}%")
-        elif d.get('status') == 'finished':
-            self.progress_signal.emit(100, "Ready, processing")
-
     def run(self):
         ydl_opts = {
             'outtmpl': os.path.join(self.folder, '%(title)s.%(ext)s'),
@@ -129,9 +186,8 @@ class DownloadWorker(QtCore.QThread):
             'http_chunk_size': int(self.net_config.get("http_chunk_size", "2097152")),
             'noplaylist': True,
         }
-        # Anpassung je nach Format und einstellbaren Parametern:
+        # Set format options based on chosen format:
         if self.fmt in ["mp4 (with Audio)", "avi", "mkv"]:
-            # Für Formate mit Video und Audio: Beide Parameter werden berücksichtigt.
             if self.video_quality == "best":
                 ydl_opts['format'] = "bestvideo+bestaudio/best"
             else:
@@ -160,49 +216,75 @@ class DownloadWorker(QtCore.QThread):
             ydl_opts['merge_output_format'] = "mp4"
             ydl_opts['postprocessor_args'] = ['-c', 'copy']
 
-        try:
-            # Zuerst Metadaten abrufen
+        # Verwende gecachte Metadaten, falls vorhanden:
+        if self.cached_metadata:
+            metadata = self.cached_metadata
+            title = metadata.get('title', self.url)
+            self.title_signal.emit(title)
+            ext = "mp4"  # Standardendung
+            self.current_outtmpl = os.path.join(self.folder, f"{title}.{ext}")
+            filesize_str = metadata.get('filesize', "Unknown")
+            self.size_signal.emit(filesize_str)
+        else:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(self.url, download=False)
                 title = info.get('title', self.url)
                 self.title_signal.emit(title)
-                # Ausgabedatei festlegen
                 ext = info.get('ext', 'mp4')
                 self.current_outtmpl = os.path.join(self.folder, f"{title}.{ext}")
-            # Download starten
+                filesize = info.get('filesize') or info.get('filesize_approx')
+                if filesize:
+                    size = filesize
+                    for unit in ['B', 'KB', 'MB', 'GB']:
+                        if size < 1024:
+                            filesize_str = f"{size:.2f} {unit}"
+                            break
+                        size /= 1024
+                    else:
+                        filesize_str = f"{size:.2f} TB"
+                else:
+                    filesize_str = "Unknown"
+                self.size_signal.emit(filesize_str)
+        # Start the download
+        try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([self.url])
             self.finished_signal.emit()
         except Exception as e:
-            # Bei Abbruch oder Fehler: Falls Teil-Dateien existieren, löschen
+            # Bei Fehler oder Cancel: Lösche alle zugehörigen Dateien
             if self.current_outtmpl:
-                part_file = self.current_outtmpl + ".part"
-                if os.path.exists(part_file):
-                    try:
-                        os.remove(part_file)
-                    except Exception:
-                        pass
+                for fname in [self.current_outtmpl, self.current_outtmpl + ".part"]:
+                    if os.path.exists(fname):
+                        try:
+                            os.remove(fname)
+                        except Exception:
+                            pass
             self.error_signal.emit(str(e))
 
 # -------------------------------
-# Hauptfenster (PyQt5) – Dark Mode
+# Main Window (PyQt5) – Dark Mode
 # -------------------------------
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
 
         self.setWindowTitle("Video Downloader UI")
-        self.resize(900, 700)
+        self.resize(900, 750)
 
-        # Zentrales Widget und Layout
+        # Cached metadata
+        self.cached_url = None
+        self.cached_metadata = None
+
+        # Central widget and layout
         central_widget = QtWidgets.QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QtWidgets.QVBoxLayout(central_widget)
 
-        # Eingabeformular (URL, Ordner, Format und Qualitäts-Parameter)
+        # Input form
         form_layout = QtWidgets.QFormLayout()
         self.url_edit = QtWidgets.QLineEdit()
         form_layout.addRow("Video URL:", self.url_edit)
+        self.url_edit.editingFinished.connect(self.load_metadata)
 
         folder_layout = QtWidgets.QHBoxLayout()
         self.folder_edit = QtWidgets.QLineEdit()
@@ -211,59 +293,67 @@ class MainWindow(QtWidgets.QMainWindow):
         folder_button.clicked.connect(self.select_folder)
         folder_layout.addWidget(self.folder_edit)
         folder_layout.addWidget(folder_button)
-        form_layout.addRow("Download-Folder:", folder_layout)
+        form_layout.addRow("Download Folder:", folder_layout)
 
         self.format_combo = QtWidgets.QComboBox()
-        self.format_combo.addItems(["mp4 (with Audio)", "mp4 (without Audio", "mp3", "avi", "mkv"])
+        self.format_combo.addItems(["mp4 (with Audio)", "mp4 (without Audio)", "mp3", "avi", "mkv"])
         self.format_combo.currentIndexChanged.connect(self.update_quality_ui)
         form_layout.addRow("Format:", self.format_combo)
 
-        # Zwei Gruppen für Video- und Audio-Einstellungen
+        # Quality settings
         self.video_quality_combo = QtWidgets.QComboBox()
         self.video_quality_combo.addItems(["best", "1080", "720", "480", "360"])
         self.audio_quality_combo = QtWidgets.QComboBox()
         self.audio_quality_combo.addItems(["320", "256", "192", "128"])
 
-        # Bei "mp4 (mit Audio)" sollen beide Gruppen angezeigt werden:
         self.quality_widget = QtWidgets.QWidget()
         quality_layout = QtWidgets.QHBoxLayout(self.quality_widget)
-        self.video_group = QtWidgets.QGroupBox("Videoqualiy (max. Height")
+        self.video_group = QtWidgets.QGroupBox("Video Quality (max. Height)")
         v_layout = QtWidgets.QHBoxLayout(self.video_group)
         v_layout.addWidget(self.video_quality_combo)
-        self.audio_group = QtWidgets.QGroupBox("Audio-Bitrate (kbps)")
+        self.audio_group = QtWidgets.QGroupBox("Audio Bitrate (kbps)")
         a_layout = QtWidgets.QHBoxLayout(self.audio_group)
         a_layout.addWidget(self.audio_quality_combo)
         quality_layout.addWidget(self.video_group)
         quality_layout.addWidget(self.audio_group)
-        form_layout.addRow("Qualitysettings:", self.quality_widget)
+        form_layout.addRow("Quality Settings:", self.quality_widget)
         self.update_quality_ui()
 
         main_layout.addLayout(form_layout)
 
-        # Bereich für Titelanzeige und Download-Button (Download-Button unterhalb des Titels)
+        # Thumbnail and title preview
+        self.thumbnail_label = QtWidgets.QLabel()
+        self.thumbnail_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.thumbnail_label.setFixedHeight(200)
+        self.thumbnail_label.hide()
+        main_layout.addWidget(self.thumbnail_label)
+
+        self.preview_title = QtWidgets.QLabel("Title: -")
+        main_layout.addWidget(self.preview_title)
+
+        # Download button
         top_action_layout = QtWidgets.QVBoxLayout()
-        self.title_label = QtWidgets.QLabel("Titel: -")
-        top_action_layout.addWidget(self.title_label)
         self.download_button = QtWidgets.QPushButton("Start Download")
         self.download_button.clicked.connect(self.start_download)
         top_action_layout.addWidget(self.download_button)
         main_layout.addLayout(top_action_layout)
 
-        # Fortschrittsbalken für den Gesamtfortschritt aller Downloads
+        # Overall progress bar
         self.overall_progress_bar = QtWidgets.QProgressBar()
         self.overall_progress_bar.setValue(0)
         main_layout.addWidget(self.overall_progress_bar)
 
-        # Tabelle für Mehrfach-Downloads
-        self.download_table = QtWidgets.QTableWidget(0, 4)
-        self.download_table.setHorizontalHeaderLabels(["Titel", "Status", "Progress", "Actions"])
+        # Download table
+        self.download_table = QtWidgets.QTableWidget(0, 5)
+        self.download_table.setHorizontalHeaderLabels(["Title", "Status", "Progress", "Size", "Actions"])
         self.download_table.horizontalHeader().setStretchLastSection(True)
+        self.download_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.download_table.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.download_table.customContextMenuRequested.connect(self.show_context_menu)
         main_layout.addWidget(self.download_table)
 
-        self.active_downloads = {}  # {row: worker}
-        self.download_progress = {}  # {row: Prozentwert}
+        self.active_downloads = {}  # row: worker
+        self.download_progress = {}  # row: progress (float)
 
     def select_folder(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Choose Folder")
@@ -284,49 +374,74 @@ class MainWindow(QtWidgets.QMainWindow):
         elif fmt in ["avi", "mkv"]:
             self.video_group.show()
             self.audio_group.show()
-        else:  # mp4 (mit Audio)
+        else:
             self.video_group.show()
             self.audio_group.show()
+
+    def load_metadata(self):
+        url = self.url_edit.text().strip()
+        if not url:
+            return
+        self.preview_title.setText("Title: Loading metadata...")
+        self.thumbnail_label.setText("Loading thumbnail...")
+        self.thumbnail_label.show()
+        self.metadata_worker = MetadataWorker(url)
+        self.metadata_worker.metadata_signal.connect(self.on_metadata_loaded)
+        self.metadata_worker.error_signal.connect(lambda e: print("Metadata error:", e))
+        self.metadata_worker.start()
+
+    def on_metadata_loaded(self, metadata):
+        current_url = self.url_edit.text().strip()
+        if current_url != "":
+            self.cached_url = current_url
+        self.cached_metadata = metadata
+
+        title = metadata.get("title", "")
+        self.preview_title.setText(f"Title: {title}")
+        pixmap = metadata.get("thumbnail")
+        if pixmap:
+            scaled = pixmap.scaled(self.thumbnail_label.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+            self.thumbnail_label.setPixmap(scaled)
+        else:
+            self.thumbnail_label.hide()
 
     def start_download(self):
         url = self.url_edit.text().strip()
         if not url:
-            QtWidgets.QMessageBox.critical(self, "Error", "Please put in a valid File URL.")
+            QtWidgets.QMessageBox.critical(self, "Error", "Please enter a valid file URL.")
             return
         folder = self.folder_edit.text().strip()
         if not folder:
-            QtWidgets.QMessageBox.critical(self, "Error", "Please Choose a Download Folder")
+            QtWidgets.QMessageBox.critical(self, "Error", "Please choose a download folder.")
             return
         fmt = self.format_combo.currentText()
         if fmt == "mp3":
             video_quality = None
             audio_bitrate = self.audio_quality_combo.currentText()
-        elif fmt == "mp4 (ohne Audio)":
+        elif fmt == "mp4 (without Audio)":
             video_quality = self.video_quality_combo.currentText()
             audio_bitrate = None
-        else:  # mp4 (mit Audio), avi, mkv
+        else:
             video_quality = self.video_quality_combo.currentText()
             audio_bitrate = self.audio_quality_combo.currentText()
 
-        # URL-Feld leeren
+        cached = self.cached_metadata if self.cached_url == url else None
+        self.thumbnail_label.hide()
         self.url_edit.clear()
 
-        worker = DownloadWorker(url, folder, fmt, video_quality, audio_bitrate, config["DownloadOptions"])
+        worker = DownloadWorker(url, folder, fmt, video_quality, audio_bitrate, config["DownloadOptions"], cached_metadata=cached)
         row = self.download_table.rowCount()
         self.download_table.insertRow(row)
-        title_item = QtWidgets.QTableWidgetItem("Loading Metadata...")
-        status_item = QtWidgets.QTableWidgetItem("Waiting...")
-        progress_item = QtWidgets.QTableWidgetItem("0%")
-        action_item = QtWidgets.QTableWidgetItem("Right click for Options")
-        self.download_table.setItem(row, 0, title_item)
-        self.download_table.setItem(row, 1, status_item)
-        self.download_table.setItem(row, 2, progress_item)
-        self.download_table.setItem(row, 3, action_item)
+        for col, text in enumerate(["Loading metadata...", "Waiting", "0%", "Unknown", "Right click for options"]):
+            item = QtWidgets.QTableWidgetItem(text)
+            item.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled)
+            self.download_table.setItem(row, col, item)
         self.active_downloads[row] = worker
         self.download_progress[row] = 0
 
         worker.title_signal.connect(lambda t, r=row: self.download_table.item(r, 0).setText(t))
         worker.progress_signal.connect(lambda p, s, r=row: self.update_download_row(r, p, s))
+        worker.size_signal.connect(lambda s, r=row: self.download_table.item(r, 3).setText(s))
         worker.finished_signal.connect(lambda r=row: self.download_finished(r))
         worker.error_signal.connect(lambda err, r=row: self.download_error(r, err))
         worker.start()
@@ -335,24 +450,37 @@ class MainWindow(QtWidgets.QMainWindow):
         self.download_progress[row] = progress
         self.download_table.item(row, 1).setText(status)
         self.download_table.item(row, 2).setText(f"{progress:.2f}%")
-        # Farbe je nach Status setzen:
-        if "Paused" in status:
-            color = QtGui.QColor("#F1C40F")  # Gelb
-        elif "cancelled" in status or "Cancel" in status:
-            color = QtGui.QColor("#E74C3C")  # Rot
+        # Update row color
+        if "paused" in status:
+            color = QtGui.QColor("#F39C12")   # Orange
+        elif "cancelled" in status:
+            color = QtGui.QColor("#E74C3C")   # Red
         elif "Finished" in status:
-            color = QtGui.QColor("#2ECC71")  # Grün
+            color = QtGui.QColor("#2ECC71")   # Green
+        elif "waiting" in status:
+            color = QtGui.QColor("#F1C40F")   # Light yellow
+        elif "Downloading" in status:
+            color = QtGui.QColor("#3498DB")   # Blue
         else:
-            color = QtGui.QColor("#95A5A6")  # Grau (läuft)
+            color = QtGui.QColor("#3498DB")
         for col in range(self.download_table.columnCount()):
             self.download_table.item(row, col).setBackground(color)
         self.update_overall_progress()
 
     def update_overall_progress(self):
-        if self.download_progress:
-            overall = sum(self.download_progress.values()) / len(self.download_progress)
-        else:
-            overall = 0
+        total_progress = 0
+        count = 0
+        for row in range(self.download_table.rowCount()):
+            status = self.download_table.item(row, 1).text()
+            if "cancelled" in status:
+                continue
+            try:
+                progress = float(self.download_table.item(row, 2).text().replace("%", ""))
+                total_progress += progress
+                count += 1
+            except:
+                pass
+        overall = total_progress / count if count > 0 else 0
         self.overall_progress_bar.setValue(int(overall))
 
     def download_finished(self, row):
@@ -383,24 +511,24 @@ class MainWindow(QtWidgets.QMainWindow):
         if action == pause_action:
             if worker._paused:
                 worker.resume()
-                self.download_table.item(row, 1).setText("continued")
+                self.download_table.item(row, 1).setText("Downloading")
             else:
                 worker.pause()
                 self.download_table.item(row, 1).setText("Paused")
         elif action == cancel_action:
             worker.cancel()
-            self.download_table.item(row, 1).setText("cancelled")
-            # Lösche eventuell vorhandene Part-Dateien:
+            self.download_table.item(row, 1).setText("Cancelled")
+            # Lösche alle zugehörigen Dateien:
             if worker.current_outtmpl:
-                part_file = worker.current_outtmpl + ".part"
-                if os.path.exists(part_file):
-                    try:
-                        os.remove(part_file)
-                    except Exception:
-                        pass
+                for fname in [worker.current_outtmpl, worker.current_outtmpl + ".part"]:
+                    if os.path.exists(fname):
+                        try:
+                            os.remove(fname)
+                        except Exception:
+                            pass
+            self.update_overall_progress()
 
 def main():
-    import sys
     app = QtWidgets.QApplication(sys.argv)
     if not check_ffmpeg():
         install = QtWidgets.QMessageBox.question(None, "ffmpeg missing",
@@ -410,7 +538,6 @@ def main():
             install_ffmpeg()
         else:
             sys.exit(1)
-    # Global Dark Mode Stylesheet
     dark_stylesheet = """
         QWidget { background-color: #2E2E2E; color: #FFFFFF; }
         QLineEdit, QComboBox, QPlainTextEdit { background-color: #3E3E3E; color: #FFFFFF; }
