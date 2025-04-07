@@ -1,4 +1,7 @@
-# Video Downloader by true_lock
+[![Issues Badge](https://img.shields.io/github/issues/truelockmc/video-downloader?style=for-the-badge)](https://github.com/truelockmc/video-downloader/issues)
+[![Closed Issues Badge](https://img.shields.io/github/issues-closed/truelockmc/PC-Optimus?color=%238256d0&style=for-the-badge)](https://github.com/truelockmc/video-downloader/issues?q=is%3Aissue+is%3Aclosed)<br>
+
+# Python Video Downloader by true_lock
 
 A PyQt5-based UI video downloader that leverages [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video extraction and downloading. The application provides an easy to use graphical user interface with usefull Costumization Settings 
 
