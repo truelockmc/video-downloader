@@ -1,5 +1,5 @@
 [![Issues Badge](https://img.shields.io/github/issues/truelockmc/video-downloader?style=for-the-badge)](https://github.com/truelockmc/video-downloader/issues)
-[![Closed Issues Badge](https://img.shields.io/github/issues-closed/truelockmc/PC-Optimus?color=%238256d0&style=for-the-badge)](https://github.com/truelockmc/video-downloader/issues?q=is%3Aissue+is%3Aclosed)<br>
+[![Closed Issues Badge](https://img.shields.io/github/issues-closed/truelockmc/video-downloader?color=%238256d0&style=for-the-badge)](https://github.com/truelockmc/video-downloader/issues?q=is%3Aissue+is%3Aclosed)<br>
 
 # Python Video Downloader by true_lock
 
