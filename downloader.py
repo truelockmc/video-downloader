@@ -90,12 +90,14 @@ class MetadataWorker(QtCore.QThread):
         self.url = url
 
     def run(self):
-        # Minimal options for fast metadata extraction:
+        # Minimal options for fast metadata extraction
         ydl_opts = {
-            'simulate': True,
+            'skip_download': True,
+            'extract_flat': True,  # Nur grundlegende Informationen abrufen
             'quiet': True,
             'no_warnings': True,
-            'skip_download': True
+            'force_generic_extractor': True,
+            'cachedir': False
         }
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -117,7 +119,8 @@ class MetadataWorker(QtCore.QThread):
             pixmap = None
             if thumb_url:
                 try:
-                    response = requests.get(thumb_url, timeout=5)
+                    # Timeout auf 1.2 Sekunden reduziert
+                    response = requests.get(thumb_url, timeout=1.2)
                     image_data = response.content
                     image = QtGui.QImage()
                     image.loadFromData(image_data)
@@ -186,7 +189,6 @@ class DownloadWorker(QtCore.QThread):
             'http_chunk_size': int(self.net_config.get("http_chunk_size", "2097152")),
             'noplaylist': True,
         }
-        # Set format options based on chosen format:
         if self.fmt in ["mp4 (with Audio)", "avi", "mkv"]:
             if self.video_quality == "best":
                 ydl_opts['format'] = "bestvideo+bestaudio/best"
@@ -216,12 +218,11 @@ class DownloadWorker(QtCore.QThread):
             ydl_opts['merge_output_format'] = "mp4"
             ydl_opts['postprocessor_args'] = ['-c', 'copy']
 
-        # Verwende gecachte Metadaten, falls vorhanden:
         if self.cached_metadata:
             metadata = self.cached_metadata
             title = metadata.get('title', self.url)
             self.title_signal.emit(title)
-            ext = "mp4"  # Standardendung
+            ext = "mp4"
             self.current_outtmpl = os.path.join(self.folder, f"{title}.{ext}")
             filesize_str = metadata.get('filesize', "Unknown")
             self.size_signal.emit(filesize_str)
@@ -245,13 +246,11 @@ class DownloadWorker(QtCore.QThread):
                 else:
                     filesize_str = "Unknown"
                 self.size_signal.emit(filesize_str)
-        # Start the download
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([self.url])
             self.finished_signal.emit()
         except Exception as e:
-            # Bei Fehler oder Cancel: Lösche alle zugehörigen Dateien
             if self.current_outtmpl:
                 for fname in [self.current_outtmpl, self.current_outtmpl + ".part"]:
                     if os.path.exists(fname):
@@ -274,6 +273,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Cached metadata
         self.cached_url = None
         self.cached_metadata = None
+        self.last_url = ""
 
         # Central widget and layout
         central_widget = QtWidgets.QWidget()
@@ -284,7 +284,7 @@ class MainWindow(QtWidgets.QMainWindow):
         form_layout = QtWidgets.QFormLayout()
         self.url_edit = QtWidgets.QLineEdit()
         form_layout.addRow("Video URL:", self.url_edit)
-        self.url_edit.editingFinished.connect(self.load_metadata)
+        self.url_edit.textChanged.connect(self.on_url_changed)
 
         folder_layout = QtWidgets.QHBoxLayout()
         self.folder_edit = QtWidgets.QLineEdit()
@@ -352,8 +352,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.download_table.customContextMenuRequested.connect(self.show_context_menu)
         main_layout.addWidget(self.download_table)
 
-        self.active_downloads = {}  # row: worker
-        self.download_progress = {}  # row: progress (float)
+        self.active_downloads = {}
+        self.download_progress = {}
+
+    def on_url_changed(self, text):
+        text = text.strip()
+        if not text:
+            return
+        if text != self.last_url:
+            self.last_url = text
+            self.preview_title.setText("Title: Loading metadata...")
+            self.thumbnail_label.setText("Loading thumbnail...")
+            self.thumbnail_label.show()
+            QtCore.QTimer.singleShot(100, self.load_metadata)
 
     def select_folder(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Choose Folder")
@@ -450,16 +461,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.download_progress[row] = progress
         self.download_table.item(row, 1).setText(status)
         self.download_table.item(row, 2).setText(f"{progress:.2f}%")
-        # Update row color
-        if "paused" in status:
+        if "paused" in status.lower():
             color = QtGui.QColor("#F39C12")   # Orange
-        elif "cancelled" in status:
+        elif "cancelled" in status.lower():
             color = QtGui.QColor("#E74C3C")   # Red
-        elif "Finished" in status:
+        elif "finished" in status.lower():
             color = QtGui.QColor("#2ECC71")   # Green
-        elif "waiting" in status:
+        elif "waiting" in status.lower():
             color = QtGui.QColor("#F1C40F")   # Light yellow
-        elif "Downloading" in status:
+        elif "downloading" in status.lower():
             color = QtGui.QColor("#3498DB")   # Blue
         else:
             color = QtGui.QColor("#3498DB")
@@ -471,7 +481,7 @@ class MainWindow(QtWidgets.QMainWindow):
         total_progress = 0
         count = 0
         for row in range(self.download_table.rowCount()):
-            status = self.download_table.item(row, 1).text()
+            status = self.download_table.item(row, 1).text().lower()
             if "cancelled" in status:
                 continue
             try:
@@ -518,7 +528,6 @@ class MainWindow(QtWidgets.QMainWindow):
         elif action == cancel_action:
             worker.cancel()
             self.download_table.item(row, 1).setText("Cancelled")
-            # Lösche alle zugehörigen Dateien:
             if worker.current_outtmpl:
                 for fname in [worker.current_outtmpl, worker.current_outtmpl + ".part"]:
                     if os.path.exists(fname):
