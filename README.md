@@ -49,7 +49,8 @@ Run the main Python script:
 ```bash
 python downloader.py
 ```
-(or just run the Executable you got from releases)
+_(or just run the Executable you got from releases)_
+
 Upon launching, the UI will allow you to input a video URL, choose a download folder, select a file format, and configure quality settings. The downloader will then extract metadata, display a preview, and manage the download process.
 
 ## Help
