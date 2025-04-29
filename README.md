@@ -26,6 +26,12 @@ A PyQt5-based UI video downloader that leverages [yt-dlp](https://github.com/yt-
 
 ## Installation
 
+# Using an compiled Binary from Releases:
+1. **Download the zip file for your operating system from the [Latest Release](https://github.com/truelockmc/video-downloader/releases/latest)**
+
+2. **Unpack it**
+
+# Using the Python Code 
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/truelockmc/video-downloader.git
@@ -43,6 +49,7 @@ Run the main Python script:
 ```bash
 python downloader.py
 ```
+(or just run the Executable you got from releases)
 Upon launching, the UI will allow you to input a video URL, choose a download folder, select a file format, and configure quality settings. The downloader will then extract metadata, display a preview, and manage the download process.
 
 ## Help
