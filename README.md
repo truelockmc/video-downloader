@@ -16,7 +16,7 @@ A PyQt5-based UI video downloader that leverages [yt-dlp](https://github.com/yt-
 - 📊 **Progress Tracking:** Monitor individual download progress as well as overall progress.  
 - 🔗 **Multi Threading:** Download as much at the same time as you want.  
 - ⏸️▶️✖️ **Download Control:** Pause, cancel and resume downloads.  
-- ⚡ **Faster Download Speed:** Automatically adjusts download settings based on network speed.  
+- ⚡ **Faster Download Speed:** Automatically adjusts download settings based on your network connection.
 - 🌙 **Dark Mode UI:** A modern, dark-themed interface built with PyQt5.
 
 ## Prerequisites
