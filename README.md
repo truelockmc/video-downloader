@@ -21,7 +21,7 @@ A PyQt5-based UI video downloader that leverages [yt-dlp](https://github.com/yt-
 
 ## Prerequisites
 
-- Python 3.6 or higher.
+- Python 3.6 or higher. _(only if using the raw source code instead of an Release Binary)_
 - [ffmpeg](https://ffmpeg.org/) is required for merging files. The application checks for ffmpeg and offers to install it via `winget` if it's not found.
 
 ## Installation
