@@ -9,15 +9,15 @@ A PyQt5-based UI video downloader that leverages [yt-dlp](https://github.com/yt-
 
 ## Features
 
-- **Video Downloading:** You can Download Videos and Audio from most Websites.
-- **Video Metadata Extraction:** Automatically retrieves video title, thumbnail, and file size.
-- **Download Options:** Choose from multiple formats including mp4 (with/without audio), mp3, avi, and mkv.
-- **Quality Settings:** Customize video quality and audio bitrate.
-- **Progress Tracking:** Monitor individual download progress as well as overall progress.
-- **Multi Threading:** Download as much at the same time as you want.
-- **Download Control:** Pause, cancel and resume downloads.
-- **Config Management:** Automatically adjusts download settings based on network speed.
-- **Dark Mode UI:** A modern, dark-themed interface built with PyQt5.
+- 📥 **Video Downloading:** You can Download Videos and Audio from most Websites.  
+- 🏷️ **Video Metadata Extraction:** Automatically retrieves video title, thumbnail, and file size.  
+- 🎞️ **Download Options:** Choose from multiple formats including mp4 (with/without audio), mp3, avi, and mkv.  
+- 🎚️ **Quality Settings:** Customize video quality and audio bitrate.  
+- 📊 **Progress Tracking:** Monitor individual download progress as well as overall progress.  
+- 🔗 **Multi Threading:** Download as much at the same time as you want.  
+- ⏸️▶️✖️ **Download Control:** Pause, cancel and resume downloads.  
+- ⚡ **Faster Download Speed:** Automatically adjusts download settings based on network speed.  
+- 🌙 **Dark Mode UI:** A modern, dark-themed interface built with PyQt5.
 
 ## Prerequisites
 
