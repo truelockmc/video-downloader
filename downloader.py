@@ -5,7 +5,7 @@ import time
 import configparser
 import requests
 import yt_dlp
-
+from Cryptodome.Cipher import AES
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 CONFIG_FILE = "download_config.ini"
