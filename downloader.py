@@ -24,13 +24,73 @@ def check_ffmpeg():
         return False
 
 def install_ffmpeg():
-    try:
-        subprocess.run(["winget", "install", "Gyan.FFmpeg.Essentials", "-e", "--silent"], check=True)
-        QtWidgets.QMessageBox.information(None, "Success", "ffmpeg was successfully installed. Please restart the program.")
-    except Exception as e:
-        QtWidgets.QMessageBox.critical(None, "Error", f"ffmpeg installation failed:\n{e}")
-        sys.exit(1)
+    os_name = platform.system().lower()
+    installed = False
+    error_msg = ""
 
+    try:
+        if os_name == "windows":
+            # Try winget first
+            if shutil.which("winget"):
+                subprocess.run(["winget", "install", "Gyan.FFmpeg.Essentials", "-e", "--silent"], check=True)
+                installed = True
+            # Try Chocolatey if winget is not available
+            elif shutil.which("choco"):
+                subprocess.run(["choco", "install", "ffmpeg", "-y"], check=True)
+                installed = True
+            else:
+                error_msg = (
+                    "Automatic ffmpeg installation failed: Neither winget nor Chocolatey was found.\n"
+                    "Please install ffmpeg manually from https://ffmpeg.org/download.html or add it to your PATH."
+                )
+        elif os_name == "darwin":  # macOS
+            if shutil.which("brew"):
+                subprocess.run(["brew", "install", "ffmpeg"], check=True)
+                installed = True
+            else:
+                error_msg = (
+                    "Homebrew is not installed. Please install Homebrew from https://brew.sh/ and then run 'brew install ffmpeg', "
+                    "or download ffmpeg manually from https://ffmpeg.org/download.html."
+                )
+        elif os_name == "linux":
+            # Try most common package managers
+            if shutil.which("apt"):
+                subprocess.run(["sudo", "apt", "update"], check=True)
+                subprocess.run(["sudo", "apt", "install", "-y", "ffmpeg"], check=True)
+                installed = True
+            elif shutil.which("dnf"):
+                subprocess.run(["sudo", "dnf", "install", "-y", "ffmpeg"], check=True)
+                installed = True
+            elif shutil.which("pacman"):
+                subprocess.run(["sudo", "pacman", "-Sy", "ffmpeg", "--noconfirm"], check=True)
+                installed = True
+            else:
+                error_msg = (
+                    "No supported package manager found. Please install ffmpeg using your distribution's package manager, "
+                    "or download from https://ffmpeg.org/download.html."
+                )
+        else:
+            error_msg = (
+                f"Unsupported OS: {os_name}. Please install ffmpeg from https://ffmpeg.org/download.html."
+            )
+
+        if installed:
+            QtWidgets.QMessageBox.information(
+                None, "Success",
+                "ffmpeg was successfully installed. Please restart the program."
+            )
+        else:
+            QtWidgets.QMessageBox.critical(
+                None, "Error",
+                error_msg
+            )
+            sys.exit(1)
+    except Exception as e:
+        QtWidgets.QMessageBox.critical(
+            None, "Error",
+            f"ffmpeg installation failed:\n{e}\n\nPlease install ffmpeg manually from https://ffmpeg.org/download.html."
+        )
+        sys.exit(1)
 # ------------------------------------------
 # Network Speed Test and Config Management
 # ------------------------------------------
