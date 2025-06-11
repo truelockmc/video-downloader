@@ -2,6 +2,8 @@ import os
 import subprocess
 import sys
 import time
+import platform
+import shutil
 import configparser
 import requests
 import yt_dlp
