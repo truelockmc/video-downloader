@@ -1,8 +1,9 @@
-#! /usr/bin/python3
 import os
 import subprocess
 import sys
 import time
+import platform
+import shutil
 import configparser
 import requests
 import yt_dlp
@@ -25,13 +26,73 @@ def check_ffmpeg():
         return False
 
 def install_ffmpeg():
-    try:
-        subprocess.run(["winget", "install", "Gyan.FFmpeg.Essentials", "-e", "--silent"], check=True)
-        QtWidgets.QMessageBox.information(None, "Success", "ffmpeg was successfully installed. Please restart the program.")
-    except Exception as e:
-        QtWidgets.QMessageBox.critical(None, "Error", f"ffmpeg installation failed:\n{e}")
-        sys.exit(1)
+    os_name = platform.system().lower()
+    installed = False
+    error_msg = ""
 
+    try:
+        if os_name == "windows":
+            # Try winget first
+            if shutil.which("winget"):
+                subprocess.run(["winget", "install", "Gyan.FFmpeg.Essentials", "-e", "--silent"], check=True)
+                installed = True
+            # Try Chocolatey if winget is not available
+            elif shutil.which("choco"):
+                subprocess.run(["choco", "install", "ffmpeg", "-y"], check=True)
+                installed = True
+            else:
+                error_msg = (
+                    "Automatic ffmpeg installation failed: Neither winget nor Chocolatey was found.\n"
+                    "Please install ffmpeg manually from https://ffmpeg.org/download.html or add it to your PATH."
+                )
+        elif os_name == "darwin":  # macOS
+            if shutil.which("brew"):
+                subprocess.run(["brew", "install", "ffmpeg"], check=True)
+                installed = True
+            else:
+                error_msg = (
+                    "Homebrew is not installed. Please install Homebrew from https://brew.sh/ and then run 'brew install ffmpeg', "
+                    "or download ffmpeg manually from https://ffmpeg.org/download.html."
+                )
+        elif os_name == "linux":
+            # Try most common package managers
+            if shutil.which("apt"):
+                subprocess.run(["sudo", "apt", "update"], check=True)
+                subprocess.run(["sudo", "apt", "install", "-y", "ffmpeg"], check=True)
+                installed = True
+            elif shutil.which("dnf"):
+                subprocess.run(["sudo", "dnf", "install", "-y", "ffmpeg"], check=True)
+                installed = True
+            elif shutil.which("pacman"):
+                subprocess.run(["sudo", "pacman", "-Sy", "ffmpeg", "--noconfirm"], check=True)
+                installed = True
+            else:
+                error_msg = (
+                    "No supported package manager found. Please install ffmpeg using your distribution's package manager, "
+                    "or download from https://ffmpeg.org/download.html."
+                )
+        else:
+            error_msg = (
+                f"Unsupported OS: {os_name}. Please install ffmpeg from https://ffmpeg.org/download.html."
+            )
+
+        if installed:
+            QtWidgets.QMessageBox.information(
+                None, "Success",
+                "ffmpeg was successfully installed. Please restart the program."
+            )
+        else:
+            QtWidgets.QMessageBox.critical(
+                None, "Error",
+                error_msg
+            )
+            sys.exit(1)
+    except Exception as e:
+        QtWidgets.QMessageBox.critical(
+            None, "Error",
+            f"ffmpeg installation failed:\n{e}\n\nPlease install ffmpeg manually from https://ffmpeg.org/download.html."
+        )
+        sys.exit(1)
 # ------------------------------------------
 # Network Speed Test and Config Management
 # ------------------------------------------
@@ -100,12 +161,6 @@ class MetadataWorker(QtCore.QThread):
             'force_generic_extractor': True,
             'cachedir': False
         }
-        if "vid.speedtodayz.site" in self.url:
-            ydl_opts["http_headers"] = {
-                "User-Agent": "Mozilla/5.0",
-                "Origin": "https://player.videasy.net",
-                "Referer": "https://player.videasy.net/"
-            }
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(self.url, download=False, process=False)
@@ -196,16 +251,6 @@ class DownloadWorker(QtCore.QThread):
             'http_chunk_size': int(self.net_config.get("http_chunk_size", "2097152")),
             'noplaylist': True,
         }
-        # Custom header support
-        custom_headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Origin": "https://player.videasy.net",
-            "Referer": "https://player.videasy.net/"
-        }
-        if "vid.speedtodayz.site" in self.url:
-            ydl_opts["http_headers"] = custom_headers
-            ydl_opts['format'] = "best"
-            
         if self.fmt in ["mp4 (with Audio)", "avi", "mkv"]:
             if self.video_quality == "best":
                 ydl_opts['format'] = "bestvideo+bestaudio/best"
