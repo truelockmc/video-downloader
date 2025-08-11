@@ -4,7 +4,7 @@
 # Python Video Downloader by true_lock
 
 A PyQt5-based UI video downloader that leverages [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video extraction and downloading. The application provides an easy to use graphical user interface with usefull Costumization Settings.
-This Tool supports every Site yt-dlp supports + additional ones
+This Tool supports every Site yt-dlp supports + [additional ones](https://github.com/truelockmc/video-downloader/blob/main/README.md#additonally-supported-sites)
 
 ![Look at the UI :)](screenshots/ui.png)
 
@@ -54,7 +54,9 @@ _(or just run the Executable you got from releases)_
 
 Upon launching, the UI will allow you to input a video URL, choose a download folder, select a file format, and configure quality settings. The downloader will then extract metadata, display a preview, and manage the download process.
 
-## Additonally supported Sites
+## Additonally supported Sites:
+- [Videasy](https://www.videasy.net/player), a known 🏴‍☠️ video Provider Site. (You cannot directly input the player link, you need to get the .m3u8 Link) [Here's how](https://github.com/truelockmc/video-downloader/videasy.md)
+
 
 ## Help
 
