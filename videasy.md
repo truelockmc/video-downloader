@@ -11,7 +11,7 @@ So, you need to get the Link to the .m3u8 file.
    
 3. Navigate to the Network Tab.
    ![3](screenshots/videasy3.png)
-4. Search for m3u8
+4. Search for .m3u8
    ![4](screenshots/videasy4.png)
 5. Play the Movie you would like to download.
     ![5](screenshots/videasy5.png)
