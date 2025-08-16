@@ -161,7 +161,7 @@ class MetadataWorker(QtCore.QThread):
             'force_generic_extractor': True,
             'cachedir': False
         }
-        if "vid.speedtodayz.site" in self.url:
+        if "vid.fastinternetz.site" in self.url:
             ydl_opts["http_headers"] = {
                 "User-Agent": "Mozilla/5.0",
                 "Origin": "https://player.videasy.net",
@@ -257,7 +257,7 @@ class DownloadWorker(QtCore.QThread):
             'http_chunk_size': int(self.net_config.get("http_chunk_size", "2097152")),
             'noplaylist': True,
         }
-        if "vid.speedtodayz.site" in self.url:
+        if "vid.fastinternetz.site" in self.url:
             ydl_opts["http_headers"] = {
                 "User-Agent": "Mozilla/5.0",
                 "Origin": "https://player.videasy.net",
@@ -638,4 +638,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
