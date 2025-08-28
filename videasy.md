@@ -18,7 +18,7 @@ or a Notification
 
 appears.
 
-Now, open the Extension Ui and press the copy to clipboard Button.
+Now, open the Extension UI and press the copy to clipboard Button.
 <br><br/>
 Congrats! You can now use this Link to download your Movie : )
 
