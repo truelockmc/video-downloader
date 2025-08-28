@@ -1,3 +1,4 @@
+# The Hard Way
 # How to download from videasy (and similar Movie Sites)
 
 You cannot directly input a player link like https://player.videasy.net/movie/1234821, as this doesnt directly lead to the video file.<br><br>
