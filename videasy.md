@@ -20,7 +20,7 @@ appears.
 
 Now, open the Extension UI and press the copy to clipboard Button.
 <br><br/>
-Congrats! You can now use this Link to download your Movie : )
+### Congrats! You can now paste this Link in the Downloader to download your Movie : )
 
 ## The manual way
 
