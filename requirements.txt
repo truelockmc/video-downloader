@@ -1,4 +1,4 @@
 requests
 yt-dlp
-PyQt5
+PyQt6
 pycryptodomex #for hls downloads

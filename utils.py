@@ -14,7 +14,7 @@ import configparser
 import requests
 import glob
 import re
-from PyQt5 import QtWidgets
+from PyQt6 import QtWidgets
 
 CONFIG_FILE = "download_config.ini"
 TEST_URL = "https://ipv4.download.thinkbroadband.com/1MB.zip"  # 1MB test file for speed test

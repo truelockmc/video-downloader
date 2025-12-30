@@ -9,7 +9,7 @@ Includes:
 import os
 import sys
 import signal
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt6 import QtCore, QtGui, QtWidgets
 from utils import load_or_create_config, CONFIG_FILE, check_ffmpeg, install_ffmpeg, unique_filename, sanitize_filename
 from workers import MetadataWorker, DownloadWorker
 
@@ -75,7 +75,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Thumbnail and title preview
         self.thumbnail_label = QtWidgets.QLabel()
-        self.thumbnail_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.thumbnail_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.thumbnail_label.setFixedHeight(200)
         self.thumbnail_label.hide()
         main_layout.addWidget(self.thumbnail_label)
@@ -99,8 +99,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.download_table = QtWidgets.QTableWidget(0, 5)
         self.download_table.setHorizontalHeaderLabels(["Title", "Status", "Progress", "Size", "Actions"])
         self.download_table.horizontalHeader().setStretchLastSection(True)
-        self.download_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        self.download_table.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.download_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.download_table.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.download_table.customContextMenuRequested.connect(self.show_context_menu)
         main_layout.addWidget(self.download_table)
 
@@ -163,7 +163,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.preview_title.setText(f"Title: {title}")
         pixmap = metadata.get("thumbnail")
         if pixmap:
-            scaled = pixmap.scaled(self.thumbnail_label.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+            scaled = pixmap.scaled(self.thumbnail_label.size(), QtCore.Qt.AspectRatioMode.KeepAspectRatio, QtCore.Qt.TransformationMode.SmoothTransformation)
             self.thumbnail_label.setPixmap(scaled)
         else:
             self.thumbnail_label.hide()
@@ -219,7 +219,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.download_table.insertRow(row)
         for col, text in enumerate(["Loading metadata...", "Waiting", "0%", "Unknown", "Right click for options"]):
             item = QtWidgets.QTableWidgetItem(text)
-            item.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled)
+            item.setFlags(QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled)
             self.download_table.setItem(row, col, item)
         self.active_downloads[row] = worker
         self.download_progress[row] = 0
@@ -291,7 +291,7 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             pause_action = menu.addAction("Pause")
         cancel_action = menu.addAction("Cancel")
-        action = menu.exec_(self.download_table.viewport().mapToGlobal(pos))
+        action = menu.exec(self.download_table.viewport().mapToGlobal(pos))
         if action == pause_action:
             if worker._paused:
                 worker.resume()
@@ -332,10 +332,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 self,
                 "Active downloads",
                 "There are active downloads. Are you sure you want to quit? This will cancel all active downloads.",
-                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-                QtWidgets.QMessageBox.No
+                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+                QtWidgets.QMessageBox.StandardButton.No
             )
-            if reply == QtWidgets.QMessageBox.No:
+            if reply == QtWidgets.QMessageBox.StandardButton.No:
                 event.ignore()
                 return
             # else: cancel all
@@ -367,8 +367,8 @@ def main_app():
     if not check_ffmpeg():
         install = QtWidgets.QMessageBox.question(None, "ffmpeg missing",
                                                  "ffmpeg is not installed. Install now?",
-                                                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
-        if install == QtWidgets.QMessageBox.Yes:
+                                                 QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No)
+        if install == QtWidgets.QMessageBox.StandardButton.Yes:
             install_ffmpeg()
         else:
             sys.exit(1)
@@ -386,11 +386,11 @@ def main_app():
     # Ensure Ctrl+C triggers the same close flow: post a close() to the window
     def _sigint_handler(signum, frame):
         try:
-            QtCore.QMetaObject.invokeMethod(window, "close", QtCore.Qt.QueuedConnection)
+            QtCore.QMetaObject.invokeMethod(window, "close", QtCore.Qt.ConnectionType.QueuedConnection)
         except Exception:
             # fallback: exit
             os._exit(0)
     signal.signal(signal.SIGINT, _sigint_handler)
 
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

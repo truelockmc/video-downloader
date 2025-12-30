@@ -8,7 +8,7 @@ import os
 import time
 import yt_dlp
 import requests
-from PyQt5 import QtCore, QtGui
+from PyQt6 import QtCore, QtGui
 from utils import get_videasy_headers, sanitize_filename
 
 # Small logger for yt-dlp to forward messages (incl. postprocessor/ffmpeg messages) to terminal.
