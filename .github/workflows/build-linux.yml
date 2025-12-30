@@ -54,7 +54,6 @@ jobs:
             --include-package=Crypto \
             --include-data-file=download_config.ini=download_config.ini \
             --follow-imports \
-            --linux-disable-console \
             --output-filename=VideoDownloader \
             downloader.py
 
