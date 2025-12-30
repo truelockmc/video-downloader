@@ -9,7 +9,6 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
 
-    # Build in older distro for maximum GLIBC compatibility
     container:
       image: ubuntu:20.04
 
@@ -27,6 +26,8 @@ jobs:
             build-essential \
             patchelf \
             libgl1 \
+            libglib2.0-0 \
+            libglib2.0-dev \
             libxkbcommon-x11-0 \
             libxcb-xinerama0 \
             libxcb-cursor0
