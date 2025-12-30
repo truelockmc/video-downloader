@@ -53,6 +53,7 @@ jobs:
             --enable-plugin=pyqt5 \
             --include-package=yt_dlp \
             --include-package=Cryptodome \
+            --recurse-not-to-include=Cryptodome.SelfTest \
             --follow-imports \
             --output-filename=VideoDownloader \
             downloader.py
