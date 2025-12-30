@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Helper Functions: ffmpeg-check/install, network speed test, config,
-and Videasy-Header builder.
+Videasy-Header builder and cleanup helper.
 """
 import os
 import subprocess
@@ -11,6 +11,7 @@ import shutil
 import time
 import configparser
 import requests
+import glob
 from PyQt5 import QtWidgets
 
 CONFIG_FILE = "download_config.ini"
@@ -146,3 +147,34 @@ def get_videasy_headers():
         "Origin": "https://player.videasy.net",
         "Referer": "https://player.videasy.net/"
     }
+
+def cleanup_download_folder(folder):
+    """
+    Remove common temporary/partial files in the download folder.
+    Currently removes:
+      - files ending with '.part'
+      - files matching '*.part.*'
+      - files ending with '.part.tmp' (just in case)
+    Returns a list of removed file paths.
+    """
+    removed = []
+    try:
+        if not folder:
+            return removed
+        folder = os.path.expanduser(folder)
+        if not os.path.isdir(folder):
+            return removed
+        patterns = ['*.part', '*.part.*', '*.part.tmp', '*.tmp']
+        for pat in patterns:
+            full_pat = os.path.join(folder, pat)
+            for fp in glob.glob(full_pat):
+                try:
+                    os.remove(fp)
+                    removed.append(fp)
+                except Exception:
+                    # best-effort: ignore removal errors
+                    pass
+    except Exception:
+        # best-effort, never raise here
+        pass
+    return removed

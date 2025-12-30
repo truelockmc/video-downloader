@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
 UI (MainWindow) - uses utils and workers.
+Includes safe close handling (confirm on active downloads) and cleanup on exit.
 """
 import os
 import sys
+import signal
 from PyQt5 import QtCore, QtGui, QtWidgets
-from utils import load_or_create_config, CONFIG_FILE, check_ffmpeg, install_ffmpeg
+from utils import load_or_create_config, CONFIG_FILE, check_ffmpeg, install_ffmpeg, cleanup_download_folder
 from workers import MetadataWorker, DownloadWorker
 
 config = load_or_create_config()
@@ -284,6 +286,55 @@ class MainWindow(QtWidgets.QMainWindow):
                             pass
             self.update_overall_progress()
 
+    def closeEvent(self, event):
+        """
+        Intercept window close:
+         - if active downloads exist -> ask confirmation (EN)
+         - if confirmed: cancel downloads, wait shortly, run cleanup in configured folder
+         - always run cleanup (best-effort)
+        """
+        # Find running workers
+        running_workers = []
+        for w in self.active_downloads.values():
+            try:
+                if w.isRunning() and not getattr(w, "_cancelled", False):
+                    running_workers.append(w)
+            except Exception:
+                # If any issue detecting state, treat as running to be safe
+                running_workers.append(w)
+
+        if running_workers:
+            reply = QtWidgets.QMessageBox.question(
+                self,
+                "Active downloads",
+                "There are active downloads. Are you sure you want to quit? This will cancel all active downloads.",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.No
+            )
+            if reply == QtWidgets.QMessageBox.No:
+                event.ignore()
+                return
+            # else: cancel all
+            for w in running_workers:
+                try:
+                    w.cancel()
+                except Exception:
+                    pass
+            # wait a moment for threads to stop (best-effort)
+            for w in running_workers:
+                try:
+                    w.wait(3000)
+                except Exception:
+                    pass
+
+        try:
+            folder = config["DownloadOptions"].get("download_folder", os.path.expanduser("~"))
+            cleanup_download_folder(folder)
+        except Exception:
+            pass
+
+        event.accept()
+
 
 def main_app():
     app = QtWidgets.QApplication(sys.argv)
@@ -305,5 +356,15 @@ def main_app():
     """
     app.setStyleSheet(dark_stylesheet)
     window = MainWindow()
+
+    # Ensure Ctrl+C triggers the same close flow: post a close() to the window
+    def _sigint_handler(signum, frame):
+        try:
+            QtCore.QMetaObject.invokeMethod(window, "close", QtCore.Qt.QueuedConnection)
+        except Exception:
+            # fallback: exit
+            os._exit(0)
+    signal.signal(signal.SIGINT, _sigint_handler)
+
     window.show()
     sys.exit(app.exec_())
