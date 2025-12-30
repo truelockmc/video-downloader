@@ -55,7 +55,7 @@ _(or just run the Executable you got from releases)_
 Upon launching, the UI will allow you to input a video URL, choose a download folder, select a file format, and configure quality settings. The downloader will then extract metadata, display a preview, and manage the download process.
 
 ## Additonally supported Sites:
-- [Videasy](https://www.videasy.net/player), a known 🏴‍☠️ video Provider Site. (You cannot directly input the player link, you need to get the .m3u8 Link) [Here's how](https://github.com/truelockmc/video-downloader/blob/main/videasy.md). This also works for similiar Websites.
+- [Videasy](https://www.videasy.net/player), a known 🏴‍☠️ video Provider Site. (You cannot directly input the player link, you need to get the .m3u8 Link) [Here's how](https://github.com/truelockmc/video-downloader/blob/main/Docs/videasy.md). This also works for similiar Websites.
 
 
 ## Help
@@ -68,8 +68,3 @@ You can also create an Github [Issue](https://github.com/truelockmc/video-downlo
 Contributions are welcome! Please open an issue or submit a pull request for any improvements or bug fixes.
 
 ## Made by [me](https://github.com/truelockmc) : )
-
-## Acknowledgments
-
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) for its powerful video downloading capabilities.
-- The PyQt5 community for providing excellent tools to build the GUI.

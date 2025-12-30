@@ -24,4 +24,4 @@ Now, open the Extension UI and press the copy to clipboard Button.
 
 ## The manual way
 
-If the Extension doesnt work for you, or you dont want to install it, use [this Guide](https://github.com/truelockmc/video-downloader/blob/main/videasy_2.md)
+If the Extension doesnt work for you, or you dont want to install it, use [this Guide](https://github.com/truelockmc/video-downloader/blob/main/Docs/videasy_2.md)
