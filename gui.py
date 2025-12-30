@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
 UI (MainWindow) - uses utils and workers.
-Includes safe close handling (confirm on active downloads) and cleanup on exit.
+Includes:
+ - filename-change dialog before starting a download
+ - automatic uniqueness check (appends " (1)", " (2)", ...) if file exists
+ - forwards a forced_outtmpl to DownloadWorker
 """
 import os
 import sys
 import signal
 from PyQt5 import QtCore, QtGui, QtWidgets
-from utils import load_or_create_config, CONFIG_FILE, check_ffmpeg, install_ffmpeg, cleanup_download_folder
+from utils import load_or_create_config, CONFIG_FILE, check_ffmpeg, install_ffmpeg, unique_filename, sanitize_filename
 from workers import MetadataWorker, DownloadWorker
 
 config = load_or_create_config()
@@ -178,18 +181,40 @@ class MainWindow(QtWidgets.QMainWindow):
         if fmt == "mp3":
             video_quality = None
             audio_bitrate = self.audio_quality_combo.currentText()
+            default_ext = "mp3"
         elif fmt == "mp4 (without Audio)":
             video_quality = self.video_quality_combo.currentText()
             audio_bitrate = None
+            default_ext = "mp4"
         else:
             video_quality = self.video_quality_combo.currentText()
             audio_bitrate = self.audio_quality_combo.currentText()
+            default_ext = "mp4"
 
-        cached = self.cached_metadata if self.cached_url == url else None
-        self.thumbnail_label.hide()
-        self.url_edit.clear()
+        # Determine suggested filename
+        if self.cached_url == url and self.cached_metadata:
+            suggested = self.cached_metadata.get("title", "")
+        else:
+            # fallback: use last path segment of URL or 'download'
+            try:
+                suggested = os.path.splitext(os.path.basename(url))[0] or "download"
+            except Exception:
+                suggested = "download"
+        suggested = sanitize_filename(suggested)
 
-        worker = DownloadWorker(url, folder, fmt, video_quality, audio_bitrate, config["DownloadOptions"], cached_metadata=cached)
+        # Ask user for filename (without extension)
+        base_name, ok = QtWidgets.QInputDialog.getText(self, "Filename", f"Save as (without extension):", text=suggested)
+        if not ok:
+            return  # user cancelled
+        base_name = base_name.strip()
+        if not base_name:
+            base_name = suggested
+
+        # Create a unique filename in the folder (append (1), (2) ... if exists)
+        final_fullpath = unique_filename(folder, base_name, default_ext)
+
+        # Prepare worker with forced_outtmpl = final_fullpath
+        worker = DownloadWorker(url, folder, fmt, video_quality, audio_bitrate, config["DownloadOptions"], cached_metadata=(self.cached_metadata if self.cached_url == url else None), forced_outtmpl=final_fullpath)
         row = self.download_table.rowCount()
         self.download_table.insertRow(row)
         for col, text in enumerate(["Loading metadata...", "Waiting", "0%", "Unknown", "Right click for options"]):
@@ -300,7 +325,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 if w.isRunning() and not getattr(w, "_cancelled", False):
                     running_workers.append(w)
             except Exception:
-                # If any issue detecting state, treat as running to be safe
                 running_workers.append(w)
 
         if running_workers:
@@ -327,8 +351,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     pass
 
+        # Cleanup download folder always (best-effort)
         try:
             folder = config["DownloadOptions"].get("download_folder", os.path.expanduser("~"))
+            from utils import cleanup_download_folder
             cleanup_download_folder(folder)
         except Exception:
             pass

@@ -3,6 +3,7 @@
 Helper Functions: ffmpeg-check/install, network speed test, config,
 Videasy-Header builder and cleanup helper.
 """
+
 import os
 import subprocess
 import sys
@@ -12,6 +13,7 @@ import time
 import configparser
 import requests
 import glob
+import re
 from PyQt5 import QtWidgets
 
 CONFIG_FILE = "download_config.ini"
@@ -178,3 +180,51 @@ def cleanup_download_folder(folder):
         # best-effort, never raise here
         pass
     return removed
+
+# -------------------------
+# Filename helpers
+# -------------------------
+_INVALID_FN_CHARS = r'<>:"/\\|?*\0'  # include NUL
+_INVALID_FN_RE = re.compile(r'[<>:"/\\|?*\x00]')
+
+def sanitize_filename(name: str, max_length: int = 240) -> str:
+    """
+    Remove or replace characters invalid in filenames and trim length.
+    """
+    if not name:
+        return "download"
+    # Replace invalid chars with underscore
+    name = _INVALID_FN_RE.sub("_", name)
+    # Trim whitespace and collapse multiple spaces
+    name = re.sub(r"\s+", " ", name).strip()
+    # On some filesystems, filenames must be shorter. Trim to max_length.
+    if len(name) > max_length:
+        name = name[:max_length].rstrip()
+    return name
+
+def unique_filename(folder: str, base_name: str, ext: str) -> str:
+    """
+    Ensure a unique filename in folder.
+    base_name: without extension
+    ext: extension WITHOUT leading dot, e.g. 'mp4' or 'mkv'
+    Returns full path to unique filename (folder + base + maybe ' (n)' + .ext)
+    """
+    folder = os.path.expanduser(folder)
+    if not os.path.isdir(folder):
+        # Ensure folder exists or fallback to current dir
+        try:
+            os.makedirs(folder, exist_ok=True)
+        except Exception:
+            folder = os.getcwd()
+    base = sanitize_filename(base_name)
+    if ext:
+        ext = ext.lstrip(".")
+    candidate = f"{base}.{ext}" if ext else base
+    full = os.path.join(folder, candidate)
+    i = 1
+    while os.path.exists(full):
+        candidate = f"{base} ({i})"
+        candidate_with_ext = f"{candidate}.{ext}" if ext else candidate
+        full = os.path.join(folder, candidate_with_ext)
+        i += 1
+    return full
