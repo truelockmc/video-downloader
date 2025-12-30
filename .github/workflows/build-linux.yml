@@ -52,7 +52,7 @@ jobs:
             --onefile \
             --enable-plugin=pyqt5 \
             --include-package=yt_dlp \
-            --include-package=Crypto \
+            --include-package=Cryptodome \
             --follow-imports \
             --output-filename=VideoDownloader \
             downloader.py
