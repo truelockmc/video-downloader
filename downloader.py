@@ -1,4 +1,5 @@
-#! /usr/bin/python3
+#!/home/user/venv/bin/python
+
 import os
 import subprocess
 import sys
@@ -162,7 +163,7 @@ class MetadataWorker(QtCore.QThread):
             'force_generic_extractor': True,
             'cachedir': False
         }
-        if "vid.fastinternetz.site" in self.url:
+        if "workers" in self.url:
             ydl_opts["http_headers"] = {
                 "User-Agent": "Mozilla/5.0",
                 "Origin": "https://player.videasy.net",
@@ -258,14 +259,14 @@ class DownloadWorker(QtCore.QThread):
             'http_chunk_size': int(self.net_config.get("http_chunk_size", "2097152")),
             'noplaylist': True,
         }
-        if "vid.fastinternetz.site" in self.url:
+        if "workers" in self.url:
             ydl_opts["http_headers"] = {
                 "User-Agent": "Mozilla/5.0",
                 "Origin": "https://player.videasy.net",
                 "Referer": "https://player.videasy.net/"
             }
             ydl_opts['format'] = "best"
-            
+
         if self.fmt in ["mp4 (with Audio)", "avi", "mkv"]:
             if self.video_quality == "best":
                 ydl_opts['format'] = "bestvideo+bestaudio/best"
