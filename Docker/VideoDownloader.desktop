@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=VideoDownloader
-Comment=Download videos and audio from nearly every Website
-Terminal=false
-Exec=VideoDownloader
-Icon=icon
-Type=Application
-Categories=Network;Video;Utility;
-
