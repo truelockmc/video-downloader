@@ -6,7 +6,7 @@
 A PyQt5-based UI video downloader that leverages [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video extraction and downloading. The application provides an easy to use graphical user interface with usefull Costumization Settings.
 This Tool supports every Site yt-dlp supports + [additional ones](https://github.com/truelockmc/video-downloader/blob/main/README.md#additonally-supported-sites)
 
-![Look at the UI :)](screenshots/ui.png)
+![Look at the UI :)](Docs/screenshots/ui.png)
 
 ## Features
 
