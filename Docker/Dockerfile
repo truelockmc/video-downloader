@@ -1,7 +1,7 @@
-FROM debian:11
+FROM ubuntu:20.04
 
+# Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
 
 RUN apt-get update && apt-get install -y \
     python3 \
@@ -22,7 +22,6 @@ RUN apt-get update && apt-get install -y \
     libxcb-shape0 \
     libxcb-xfixes0 \
     libxcb-sync1 \
-    libxcb-util1 \
     libxrender1 \
     libxi6 \
     libxcomposite1 \
@@ -37,19 +36,18 @@ RUN apt-get update && apt-get install -y \
     wget \
     file \
     ca-certificates \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY requirements.txt /app/requirements.txt
+# Copy all required project files from build context
+COPY requirements.txt downloader.py gui.py utils.py workers.py Docker/icon.png Docker/VideoDownloader.desktop /app/
 
+RUN chmod -R a+rX /app
+
+# Setup venv and install dependencies
 RUN python3 -m venv /opt/venv \
- && . /opt/venv/bin/activate \
- && pip install --upgrade pip \
- && pip install -r requirements.txt \
- && pip install pyinstaller
-
-ENV PATH="/opt/venv/bin:$PATH"
-
-COPY . /app
+    && . /opt/venv/bin/activate \
+    && pip install --upgrade pip \
+    && pip install -r requirements.txt \
+    && pip install pyinstaller
