@@ -48,7 +48,7 @@ This Tool supports every Site yt-dlp supports + [additional ones](https://github
 
 Run the main Python script:
 ```bash
-python downloader.py
+python main.py
 ```
 _(or just run the Executable you got from releases)_
 
