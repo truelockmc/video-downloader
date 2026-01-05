@@ -5,6 +5,7 @@ MetadataWorker and DownloadWorker
 - DownloadWorker supports an optional forced_outtmpl path (full path to output file).
 """
 import os
+import sys
 import time
 import yt_dlp
 import requests
@@ -12,22 +13,69 @@ import shutil
 from PyQt6 import QtCore, QtGui
 from utils import get_videasy_headers, sanitize_filename
 
-# Small logger for yt-dlp to forward messages (incl. postprocessor/ffmpeg messages) to terminal.
 class YTDLPLogger:
+    def __init__(self):
+        self._last_was_progress = False
+
+    def _is_progress(self, msg: str) -> bool:
+        if not msg:
+            return False
+        s = msg.strip()
+        return ('\r' in msg) or (s.startswith('[download]') and ('%' in s or 'ETA' in s or 'of' in s))
+
+    def _finish_progress_line(self):
+        if self._last_was_progress:
+            sys.stdout.write('\n')
+            sys.stdout.flush()
+            self._last_was_progress = False
+
     def debug(self, msg):
-        pass
+        if not msg:
+            return
+        if self._is_progress(msg):
+            parts = [p for p in msg.split('\r') if p != '']
+            current = parts[-1] if parts else msg
+            # ensure we don't output a trailing newline — use '\r' to overwrite same line
+            out = current.rstrip('\n')
+            if not out.endswith('\r'):
+                out = out + '\r'
+            sys.stdout.write(out)
+            sys.stdout.flush()
+            self._last_was_progress = True
+        else:
+
+            self._finish_progress_line()
+
+            if msg.startswith('['):
+                print(msg)
+            else:
+                print(f"[yt-dlp DEBUG] {msg}")
 
     def info(self, msg):
         if not msg:
             return
-        print(f"[yt-dlp] {msg}")
+        self._finish_progress_line()
+        if msg.startswith('['):
+            print(msg)
+        else:
+            print(f"[yt-dlp] {msg}")
 
     def warning(self, msg):
-        if msg:
+        if not msg:
+            return
+        self._finish_progress_line()
+        if msg.startswith('['):
+            print(msg)
+        else:
             print(f"[yt-dlp WARNING] {msg}")
 
     def error(self, msg):
-        if msg:
+        if not msg:
+            return
+        self._finish_progress_line()
+        if msg.startswith('['):
+            print(msg)
+        else:
             print(f"[yt-dlp ERROR] {msg}")
 
 def _ffmpeg_available():
@@ -46,8 +94,6 @@ class MetadataWorker(QtCore.QThread):
         ydl_opts = {
             'skip_download': True,
             'extract_flat': True,
-            'quiet': True,
-            'no_warnings': True,
             'force_generic_extractor': True,
             'cachedir': False,
 
