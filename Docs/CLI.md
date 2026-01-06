@@ -73,9 +73,7 @@ Choice (number):
 
 - Config integration
   - The CLI calls `load_or_create_config()` from the project utils. If no config exists, a configuration file is created with tuned defaults depending on a quick network-speed test (this sets `concurrent_fragment_downloads` and `http_chunk_size`).
-  - The default download folder used when `--folder` is not provided is read from this config.
-- Filename uniqueness
-  - If `--filename` is provided, the CLI will create a unique filename in the target folder using the same `unique_filename()` helper as the GUI (appends ` (1)`, ` (2)`, ...).
+  - The default download folder used when `--folder` is not provided is read from this config
 - Progress and logging
   - The CLI uses the same YTDLP logger used by the GUI worker. Progress lines are printed using carriage returns so the terminal output is compact (no long list of lines for progress).
 - Retry behavior
