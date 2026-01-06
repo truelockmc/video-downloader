@@ -2,6 +2,7 @@
 """
 MetadataWorker and DownloadWorker
 - Adds a small ytdlp logger that prints postprocessor messages to terminal.
+- Exports build_ydl_opts(...) so other modules (CLI) can reuse the same option-building logic.
 - DownloadWorker supports an optional forced_outtmpl path (full path to output file).
 """
 import os
@@ -43,9 +44,7 @@ class YTDLPLogger:
             sys.stdout.flush()
             self._last_was_progress = True
         else:
-
             self._finish_progress_line()
-
             if msg.startswith('['):
                 print(msg)
             else:
@@ -78,6 +77,60 @@ class YTDLPLogger:
         else:
             print(f"[yt-dlp ERROR] {msg}")
 
+def build_ydl_opts(fmt, video_quality, audio_bitrate, net_config):
+    """
+    Stateless builder for yt-dlp options that mirrors DownloadWorker._build_base_opts logic.
+    Returned dict intentionally does not set 'progress_hooks' (caller attaches it) but does set
+    format/merge/postprocessor options.
+    """
+    ydl_opts = {
+        # progress_hooks / logger set by caller
+        'abort_on_error': True,
+        'concurrent_fragment_downloads': int(net_config.get("concurrent_fragment_downloads", "5")),
+        'http_chunk_size': int(net_config.get("http_chunk_size", "2097152")),
+        'noplaylist': True,
+        'logger': None,  # caller will attach a logger object (e.g. YTDLPLogger())
+        'prefer_ffmpeg': True,
+        'cachedir': False,
+        'remote_components': ['ejs:github']
+    }
+
+    if fmt in ["mp4 (with Audio)", "avi", "mkv"]:
+        if video_quality == "best":
+            ydl_opts['format'] = "bestvideo+bestaudio/best"
+        else:
+            if video_quality:
+                ydl_opts['format'] = f"bestvideo[height<={video_quality}]+bestaudio/best[height<={video_quality}]"
+            else:
+                ydl_opts['format'] = "bestvideo+bestaudio/best"
+        if fmt == "mp4 (with Audio)":
+            ydl_opts['merge_output_format'] = "mp4"
+            ydl_opts['postprocessor_args'] = ['-c', 'copy']
+        else:
+            ydl_opts['merge_output_format'] = fmt.split()[0].lower()
+    elif fmt == "mp4 (without Audio)":
+        if video_quality == "best":
+            ydl_opts['format'] = "bestvideo"
+        else:
+            if video_quality:
+                ydl_opts['format'] = f"bestvideo[height<={video_quality}]"
+            else:
+                ydl_opts['format'] = "bestvideo"
+        ydl_opts['merge_output_format'] = "mp4"
+        ydl_opts['postprocessor_args'] = ['-c', 'copy']
+    elif fmt == "mp3":
+        ydl_opts['format'] = "bestaudio"
+        ydl_opts['postprocessors'] = [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': audio_bitrate,
+        }]
+    else:
+        ydl_opts['format'] = "bestvideo+bestaudio/best"
+        ydl_opts['merge_output_format'] = "mp4"
+        ydl_opts['postprocessor_args'] = ['-c', 'copy']
+    return ydl_opts
+
 def _ffmpeg_available():
     return shutil.which("ffmpeg") is not None
 
@@ -96,7 +149,6 @@ class MetadataWorker(QtCore.QThread):
             'extract_flat': True,
             'force_generic_extractor': True,
             'cachedir': False,
-
             'logger': YTDLPLogger(),
         }
 
@@ -197,47 +249,9 @@ class DownloadWorker(QtCore.QThread):
         self._cancelled = True
 
     def _build_base_opts(self):
-        ydl_opts = {
-            # default outtmpl will be set/overridden later
-            'progress_hooks': [self.progress_hook],
-            'abort_on_error': True,
-            'concurrent_fragment_downloads': int(self.net_config.get("concurrent_fragment_downloads", "5")),
-            'http_chunk_size': int(self.net_config.get("http_chunk_size", "2097152")),
-            'noplaylist': True,
-            'logger': YTDLPLogger(),
-            # prefer ffmpeg for merging if available
-            'prefer_ffmpeg': True,
-            'remote_components': ['ejs:github']
-        }
-        # Format/merge options
-        if self.fmt in ["mp4 (with Audio)", "avi", "mkv"]:
-            if self.video_quality == "best":
-                ydl_opts['format'] = "bestvideo+bestaudio/best"
-            else:
-                ydl_opts['format'] = f"bestvideo[height<={self.video_quality}]+bestaudio/best[height<={self.video_quality}]"
-            if self.fmt == "mp4 (with Audio)":
-                ydl_opts['merge_output_format'] = "mp4"
-                ydl_opts['postprocessor_args'] = ['-c', 'copy']
-            else:
-                ydl_opts['merge_output_format'] = self.fmt.split()[0].lower()
-        elif self.fmt == "mp4 (without Audio)":
-            if self.video_quality == "best":
-                ydl_opts['format'] = "bestvideo"
-            else:
-                ydl_opts['format'] = f"bestvideo[height<={self.video_quality}]"
-            ydl_opts['merge_output_format'] = "mp4"
-            ydl_opts['postprocessor_args'] = ['-c', 'copy']
-        elif self.fmt == "mp3":
-            ydl_opts['format'] = "bestaudio"
-            ydl_opts['postprocessors'] = [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': self.audio_bitrate,
-            }]
-        else:
-            ydl_opts['format'] = "bestvideo+bestaudio/best"
-            ydl_opts['merge_output_format'] = "mp4"
-            ydl_opts['postprocessor_args'] = ['-c', 'copy']
+        ydl_opts = build_ydl_opts(self.fmt, self.video_quality, self.audio_bitrate, self.net_config)
+        ydl_opts['progress_hooks'] = [self.progress_hook]
+        ydl_opts['logger'] = YTDLPLogger()
         return ydl_opts
 
     def _log_available_formats(self, info):
