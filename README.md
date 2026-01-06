@@ -3,22 +3,25 @@
 
 # Python Video Downloader by true_lock
 
-A PyQt6-based UI video downloader that leverages [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video extraction and downloading. The application provides an easy to use graphical user interface with usefull Costumization Settings.
-This Tool supports every Site yt-dlp supports + [additional ones](https://github.com/truelockmc/video-downloader/blob/main/README.md#additonally-supported-sites)
+A PyQt6-based GUI and CLI video downloader that leverages [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video extraction and downloading. <br>
+The application provides an easy to use graphical user interface with usefull Costumization Settings. <br>
+You can also use this as a CLI tool (interactive or for scripting). [Learn more](Docs/CLI.md) <br>
+This Tool supports every Site yt-dlp supports + [additional ones](https://github.com/truelockmc/video-downloader/blob/main/README.md#additonally-supported-sites).
 
 ![Look at the UI :)](Docs/screenshots/ui.png)
 
 ## Features
 
-- 📥 **Video Downloading:** You can Download Videos and Audio from most Websites.  
+- 📥 **Video Downloading:** You can Download Videos and Audio from most Websites.
+- ⚡ **Faster Download Speed:** Automatically adjusts download settings based on your network connection.
+- ⌨️ **CLI Support:** The Code offers Support for (interactive) CLI usage, so you can also use it for scripting or just without the UI.
 - 🏷️ **Video Metadata Extraction:** Automatically retrieves video title, thumbnail, and file size.  
 - 🎞️ **Download Options:** Choose from multiple formats including mp4 (with/without audio), mp3, avi, and mkv.  
 - 🎚️ **Quality Settings:** Customize video quality and audio bitrate.  
 - 📊 **Progress Tracking:** Monitor individual download progress as well as overall progress.  
 - 🔗 **Multi Threading:** Download as much at the same time as you want.  
 - ⏸️▶️✖️ **Download Control:** Pause, cancel and resume downloads.  
-- ⚡ **Faster Download Speed:** Automatically adjusts download settings based on your network connection.
-- 🌙 **Dark Mode UI:** A modern, dark-themed interface built with PyQt5.
+- 🌙 **Dark Mode UI:** A modern, dark-themed interface built with PyQt6.
 
 ## Prerequisites
 
