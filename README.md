@@ -14,7 +14,7 @@ This Tool supports every Site yt-dlp supports + [additional ones](https://github
 
 - 📥 **Video Downloading:** You can Download Videos and Audio from most Websites.
 - ⚡ **Faster Download Speed:** Automatically adjusts download settings based on your network connection.
-- ⌨️ **CLI Support:** The Code offers Support for (interactive) CLI usage, so you can also use it for scripting or just without the UI.
+- ⌨️ **CLI Support:** The Code offers Support for (interactive) CLI usage, so you can also use it for scripting or just without the UI. [Learn more](Docs/CLI.md)
 - 🏷️ **Video Metadata Extraction:** Automatically retrieves video title, thumbnail, and file size.  
 - 🎞️ **Download Options:** Choose from multiple formats including mp4 (with/without audio), mp3, avi, and mkv.  
 - 🎚️ **Quality Settings:** Customize video quality and audio bitrate.  
