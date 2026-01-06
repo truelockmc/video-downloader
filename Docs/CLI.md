@@ -122,9 +122,3 @@ Note: passing `-o`/`--output` via `--ytdlp-args` will set the downloader's `outt
 
 - The CLI uses the same options-builder as the GUI worker — changing the format/merge/postprocessor mapping in the worker will also change CLI behavior.
 - If you want more advanced passthrough of yt-dlp flags (proxies, cookies, headers), extend the CLI's `--ytdlp-args` parsing or pass them directly through `--ytdlp-args` (note: the current implementation only does limited parsing for `-o` / `--output`).
-
----
-
-If you want, I can:
-- add this file to the repository at `docs/CLI.md` and create a pull request,
-- or trim/expand sections, add screenshots or example terminal logs. Which would you prefer?
