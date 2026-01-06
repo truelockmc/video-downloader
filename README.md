@@ -36,7 +36,7 @@ This Tool supports every Site yt-dlp supports + [additional ones](https://github
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/truelockmc/video-downloader.git
-   cd video-downloader-main
+   cd video-downloader
    ```
 
 2. **Install the required packages:**
