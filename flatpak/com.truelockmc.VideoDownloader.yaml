@@ -1,0 +1,42 @@
+app-id: com.truelockmc.VideoDownloader
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: '6.10'
+command: video-downloader
+
+finish-args:
+  - --share=network
+  - --filesystem=home
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --socket=pulseaudio
+
+modules:
+  - python-deps.json
+
+  - name: video-downloader
+    buildsystem: simple
+    build-commands:
+      - install -D main.py /app/bin/video-downloader
+      - install -D gui.py /app/bin/gui.py
+      - install -D cli.py /app/bin/cli.py
+      - install -D utils.py /app/bin/utils.py
+      - install -D workers.py /app/bin/workers.py
+      - install -D com.truelockmc.VideoDownloader.desktop /app/share/applications/com.truelockmc.VideoDownloader.desktop
+      - install -D com.truelockmc.VideoDownloader.svg /app/share/icons/hicolor/scalable/apps/com.truelockmc.VideoDownloader.svg
+
+
+    sources:
+      - type: git
+        url: https://github.com/truelockmc/video-downloader.git
+        tag: main
+      - type: file
+        path: com.truelockmc.VideoDownloader.desktop
+      - type: file
+        path: com.truelockmc.VideoDownloader.svg
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
