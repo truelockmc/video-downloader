@@ -84,15 +84,28 @@ def build_ydl_opts(fmt, video_quality, audio_bitrate, net_config):
     format/merge/postprocessor options.
     """
     ydl_opts = {
-        # progress_hooks / logger set by caller
-        'abort_on_error': True,
-        'concurrent_fragment_downloads': int(net_config.get("concurrent_fragment_downloads", "5")),
-        'http_chunk_size': int(net_config.get("http_chunk_size", "2097152")),
+        'abort_on_error': False,
+        'concurrent_fragment_downloads': int(net_config.get("concurrent_fragment_downloads", "3")),
+        'http_chunk_size': int(net_config.get("http_chunk_size", "1048576")),
+
+        #  HLS stability
+        'retries': 100,
+        'fragment_retries': 100,
+        'retry_sleep_functions': {
+            'fragment': lambda n: 3,
+            'http': lambda n: 3,
+        },
+        'socket_timeout': 10,
+        'file_access_retries': 50,
+
+        'downloader': 'ffmpeg',
+        'hls_use_mpegts': True,
+        'continuedl': True,
+
         'noplaylist': True,
-        'logger': None,  # caller will attach a logger object (e.g. YTDLPLogger())
-        'prefer_ffmpeg': True,
         'cachedir': False,
-        'remote_components': ['ejs:github']
+        'logger': None,
+        'remote_components': ['ejs:github'],
     }
 
     if fmt in ["mp4 (with Audio)", "avi", "mkv"]:
