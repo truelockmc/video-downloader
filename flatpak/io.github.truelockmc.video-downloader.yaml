@@ -1,4 +1,4 @@
-app-id: com.truelockmc.VideoDownloader
+app-id: io.github.truelockmc.video-downloader
 runtime: org.kde.Platform
 runtime-version: '6.10'
 sdk: org.kde.Sdk
@@ -8,11 +8,13 @@ command: video-downloader
 
 finish-args:
   - --share=network
-  - --filesystem=home
+  - --share=ipc
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
   - --socket=fallback-x11
   - --socket=wayland
   - --device=dri
-  - --socket=pulseaudio
 
 modules:
   - python-deps.json
@@ -25,8 +27,8 @@ modules:
       - install -D cli.py /app/bin/cli.py
       - install -D utils.py /app/bin/utils.py
       - install -D workers.py /app/bin/workers.py
-      - install -D com.truelockmc.VideoDownloader.desktop /app/share/applications/com.truelockmc.VideoDownloader.desktop
-      - install -D com.truelockmc.VideoDownloader.svg /app/share/icons/hicolor/scalable/apps/com.truelockmc.VideoDownloader.svg
+      - install -D io.github.truelockmc.video-downloader.desktop /app/share/applications/io.github.truelockmc.video-downloader.desktop
+      - install -D io.github.truelockmc.video-downloader.svg /app/share/icons/hicolor/scalable/apps/io.github.truelockmc.video-downloader.svg
 
 
     sources:
@@ -34,9 +36,9 @@ modules:
         url: https://github.com/truelockmc/video-downloader.git
         tag: main
       - type: file
-        path: com.truelockmc.VideoDownloader.desktop
+        path: io.github.truelockmc.video-downloader.desktop
       - type: file
-        path: com.truelockmc.VideoDownloader.svg
+        path: io.github.truelockmc.video-downloader.svg
 
 cleanup-commands:
   - /app/cleanup-BaseApp.sh
