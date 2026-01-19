@@ -10,6 +10,8 @@ This Tool supports every Site yt-dlp supports + [additional ones](https://github
 
 ![Look at the UI :)](Docs/screenshots/ui.png)
 
+[![Stargazers repo roster for @truelockmc/video-downloader](https://reporoster.com/stars/dark/truelockmc/video-downloader)](https://github.com/truelockmc/video-downloader/stargazers)
+
 ## Features
 
 - 📥 **Video Downloading:** You can Download Videos and Audio from most Websites.
