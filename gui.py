@@ -230,6 +230,7 @@ class MainWindow(QtWidgets.QMainWindow):
         worker.finished_signal.connect(lambda r=row: self.download_finished(r))
         worker.error_signal.connect(lambda err, r=row: self.download_error(r, err))
         worker.start()
+        self.url_edit.clear()
 
     def update_download_row(self, row, progress, status):
         self.download_progress[row] = progress
