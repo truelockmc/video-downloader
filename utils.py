@@ -166,7 +166,7 @@ def cleanup_download_folder(folder):
         folder = os.path.expanduser(folder)
         if not os.path.isdir(folder):
             return removed
-        patterns = ['*.part', '*.part.*', '*.part.tmp', '*.tmp']
+        patterns = ['*.part', '*.part.*', '*.part.tmp', '*.tmp', '*.ytdl']
         for pat in patterns:
             full_pat = os.path.join(folder, pat)
             for fp in glob.glob(full_pat):
