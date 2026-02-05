@@ -54,26 +54,66 @@ def install_ffmpeg():
                 installed = True
             else:
                 error_msg = (
-                    "Homebrew is not installed. Please install Homebrew from https://brew.sh/ and then run 'brew install ffmpeg', "
+                     "Homebrew is not installed. Please install Homebrew from https://brew.sh/ and then run 'brew install ffmpeg', "
                     "or download ffmpeg manually from https://ffmpeg.org/download.html."
                 )
         elif os_name == "linux":
-            # Try most common package managers
+            pkg_cmds = []
             if shutil.which("apt"):
-                subprocess.run(["sudo", "apt", "update"], check=True)
-                subprocess.run(["sudo", "apt", "install", "-y", "ffmpeg"], check=True)
-                installed = True
+                pkg_cmds = [
+                    ("apt update", "apt install -y ffmpeg")
+                ]
             elif shutil.which("dnf"):
-                subprocess.run(["sudo", "dnf", "install", "-y", "ffmpeg"], check=True)
-                installed = True
+                pkg_cmds = [
+                    ("", "dnf install -y ffmpeg")
+                ]
             elif shutil.which("pacman"):
-                subprocess.run(["sudo", "pacman", "-Sy", "ffmpeg", "--noconfirm"], check=True)
-                installed = True
-            else:
+                pkg_cmds = [
+                    ("pacman -Sy", "pacman -S --noconfirm ffmpeg")
+                ]
+
+            if not pkg_cmds:
                 error_msg = (
                     "No supported package manager found. Please install ffmpeg using your distribution's package manager, "
                     "or download from https://ffmpeg.org/download.html."
                 )
+            else:
+                is_root = os.name != "nt" and getattr(os, "geteuid", lambda: 1)() == 0
+                for update_cmd, install_cmd in pkg_cmds:
+                    try:
+                        if is_root:
+                            if update_cmd:
+                                subprocess.run(update_cmd.split(), check=True)
+                            subprocess.run(install_cmd.split(), check=True)
+                            installed = True
+                            break
+                        elif shutil.which("pkexec"):
+                            full_cmd = " && ".join([c for c in (update_cmd, install_cmd) if c])
+                            subprocess.run(["pkexec", "bash", "-c", full_cmd], check=True)
+                            installed = True
+                            break
+                        else:
+                            cmd_lines = []
+                            if update_cmd:
+                                cmd_lines.append(update_cmd)
+                            cmd_lines.append(install_cmd)
+                            cmd_text = " && ".join(cmd_lines)
+                            QtWidgets.QMessageBox.information(
+                                None,
+                                "Manual installation required",
+                                f"Automatic ffmpeg installation requires elevated previleges.\n\n"
+                                f"Run this in your Terminal:\n\n{cmd_text}\n\n"
+                                "The command has been pasted into your clipboard."
+                            )
+                            try:
+                                QtWidgets.QApplication.clipboard().setText(cmd_text)
+                            except Exception:
+                                pass
+                            installed = False
+                            break
+                    except subprocess.CalledProcessError as e:
+                        continue
+
         else:
             error_msg = (
                 f"Unsupported OS: {os_name}. Please install ffmpeg from https://ffmpeg.org/download.html."
@@ -84,18 +124,20 @@ def install_ffmpeg():
                 None, "Success",
                 "ffmpeg was successfully installed. Please restart the program."
             )
+            sys.exit(0)
+
         else:
-            QtWidgets.QMessageBox.critical(
-                None, "Error",
-                error_msg
-            )
-            sys.exit(1)
+            if error_msg:
+                QtWidgets.QMessageBox.critical(
+                    None, "Error",
+                    error_msg
+                )
     except Exception as e:
         QtWidgets.QMessageBox.critical(
             None, "Error",
             f"ffmpeg installation failed:\n{e}\n\nPlease install ffmpeg manually from https://ffmpeg.org/download.html."
         )
-        sys.exit(1)
+        sys.exit(0)
 
 def network_speed_test():
     try:
