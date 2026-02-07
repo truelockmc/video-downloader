@@ -4,42 +4,29 @@ Helper Functions: ffmpeg-check/install, network speed test, config,
 Videasy-Header builder and cleanup helper.
 """
 
-import configparser
-import glob
 import os
-import platform
-import re
-import shutil
 import subprocess
 import sys
+import platform
+import shutil
 import time
-
+import configparser
 import requests
+import glob
+import re
 from PyQt6 import QtWidgets
 
 CONFIG_FILE = "download_config.ini"
-TEST_URL = (
-    "https://ipv4.download.thinkbroadband.com/1MB.zip"  # 1MB test file for speed test
-)
-
+TEST_URL = "https://ipv4.download.thinkbroadband.com/1MB.zip"  # 1MB test file for speed test
 
 def check_ffmpeg():
     try:
-        subprocess.run(
-            ["ffmpeg", "-version"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=True,
-        )
+        subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
         return True
     except Exception:
-        QtWidgets.QMessageBox.warning(
-            None,
-            "ffmpeg required",
-            "This program requires ffmpeg to merge file formats.",
-        )
+        QtWidgets.QMessageBox.warning(None, "ffmpeg required",
+                                      "This program requires ffmpeg to merge file formats.")
         return False
-
 
 def install_ffmpeg():
     os_name = platform.system().lower()
@@ -50,10 +37,7 @@ def install_ffmpeg():
         if os_name == "windows":
             # Try winget first
             if shutil.which("winget"):
-                subprocess.run(
-                    ["winget", "install", "Gyan.FFmpeg.Essentials", "-e", "--silent"],
-                    check=True,
-                )
+                subprocess.run(["winget", "install", "Gyan.FFmpeg.Essentials", "-e", "--silent"], check=True)
                 installed = True
             # Try Chocolatey if winget is not available
             elif shutil.which("choco"):
@@ -70,111 +54,48 @@ def install_ffmpeg():
                 installed = True
             else:
                 error_msg = (
-                     "Homebrew is not installed. Please install Homebrew from https://brew.sh/ and then run 'brew install ffmpeg', "
+                    "Homebrew is not installed. Please install Homebrew from https://brew.sh/ and then run 'brew install ffmpeg', "
                     "or download ffmpeg manually from https://ffmpeg.org/download.html."
                 )
         elif os_name == "linux":
-            pkg_cmds = []
+            # Try most common package managers
             if shutil.which("apt"):
-                pkg_cmds = [
-                    ("apt update", "apt install -y ffmpeg")
-                ]
+                subprocess.run(["sudo", "apt", "update"], check=True)
+                subprocess.run(["sudo", "apt", "install", "-y", "ffmpeg"], check=True)
+                installed = True
             elif shutil.which("dnf"):
-                pkg_cmds = [
-                    ("", "dnf install -y ffmpeg")
-                ]
+                subprocess.run(["sudo", "dnf", "install", "-y", "ffmpeg"], check=True)
+                installed = True
             elif shutil.which("pacman"):
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-                pkg_cmds = [
-                    ("pacman -Sy", "pacman -S --noconfirm ffmpeg")
-                ]
-
-            if not pkg_cmds:
-=======
-=======
->>>>>>> Stashed changes
-                subprocess.run(
-                    ["sudo", "pacman", "-Sy", "ffmpeg", "--noconfirm"], check=True
-                )
+                subprocess.run(["sudo", "pacman", "-Sy", "ffmpeg", "--noconfirm"], check=True)
                 installed = True
             else:
->>>>>>> Stashed changes
                 error_msg = (
                     "No supported package manager found. Please install ffmpeg using your distribution's package manager, "
                     "or download from https://ffmpeg.org/download.html."
                 )
-            else:
-                is_root = os.name != "nt" and getattr(os, "geteuid", lambda: 1)() == 0
-                for update_cmd, install_cmd in pkg_cmds:
-                    try:
-                        if is_root:
-                            if update_cmd:
-                                subprocess.run(update_cmd.split(), check=True)
-                            subprocess.run(install_cmd.split(), check=True)
-                            installed = True
-                            break
-                        elif shutil.which("pkexec"):
-                            full_cmd = " && ".join([c for c in (update_cmd, install_cmd) if c])
-                            subprocess.run(["pkexec", "bash", "-c", full_cmd], check=True)
-                            installed = True
-                            break
-                        else:
-                            cmd_lines = []
-                            if update_cmd:
-                                cmd_lines.append(update_cmd)
-                            cmd_lines.append(install_cmd)
-                            cmd_text = " && ".join(cmd_lines)
-                            QtWidgets.QMessageBox.information(
-                                None,
-                                "Manual installation required",
-                                f"Automatic ffmpeg installation requires elevated previleges.\n\n"
-                                f"Run this in your Terminal:\n\n{cmd_text}\n\n"
-                                "The command has been pasted into your clipboard."
-                            )
-                            try:
-                                QtWidgets.QApplication.clipboard().setText(cmd_text)
-                            except Exception:
-                                pass
-                            installed = False
-                            break
-                    except subprocess.CalledProcessError as e:
-                        continue
-
         else:
-            error_msg = f"Unsupported OS: {os_name}. Please install ffmpeg from https://ffmpeg.org/download.html."
+            error_msg = (
+                f"Unsupported OS: {os_name}. Please install ffmpeg from https://ffmpeg.org/download.html."
+            )
 
         if installed:
             QtWidgets.QMessageBox.information(
-                None,
-                "Success",
-                "ffmpeg was successfully installed. Please restart the program.",
+                None, "Success",
+                "ffmpeg was successfully installed. Please restart the program."
             )
-            sys.exit(0)
-
         else:
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-            if error_msg:
-                QtWidgets.QMessageBox.critical(
-                    None, "Error",
-                    error_msg
-                )
-=======
-=======
->>>>>>> Stashed changes
-            QtWidgets.QMessageBox.critical(None, "Error", error_msg)
+            QtWidgets.QMessageBox.critical(
+                None, "Error",
+                error_msg
+            )
             sys.exit(1)
->>>>>>> Stashed changes
     except Exception as e:
         QtWidgets.QMessageBox.critical(
-            None,
-            "Error",
-            f"ffmpeg installation failed:\n{e}\n\nPlease install ffmpeg manually from https://ffmpeg.org/download.html.",
+            None, "Error",
+            f"ffmpeg installation failed:\n{e}\n\nPlease install ffmpeg manually from https://ffmpeg.org/download.html."
         )
-        sys.exit(0)
-
-
+        sys.exit(1)
 
 def network_speed_test():
     try:
@@ -192,7 +113,6 @@ def network_speed_test():
         return speed
     except Exception:
         return 1.0
-
 
 def load_or_create_config():
     config = configparser.ConfigParser()
@@ -213,12 +133,11 @@ def load_or_create_config():
     config["DownloadOptions"] = {
         "concurrent_fragment_downloads": concurrent_fragments,
         "http_chunk_size": http_chunk_size,
-        "download_folder": os.path.expanduser("~"),
+        "download_folder": os.path.expanduser("~")
     }
     with open(CONFIG_FILE, "w") as configfile:
         config.write(configfile)
     return config
-
 
 def get_videasy_headers():
     """
@@ -228,9 +147,8 @@ def get_videasy_headers():
     return {
         "User-Agent": "Mozilla/5.0",
         "Origin": "https://player.videasy.net",
-        "Referer": "https://player.videasy.net/",
+        "Referer": "https://player.videasy.net/"
     }
-
 
 def cleanup_download_folder(folder):
     """
@@ -248,15 +166,7 @@ def cleanup_download_folder(folder):
         folder = os.path.expanduser(folder)
         if not os.path.isdir(folder):
             return removed
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
         patterns = ['*.part', '*.part.*', '*.part.tmp', '*.tmp', '*.ytdl']
-=======
-        patterns = ["*.part", "*.part.*", "*.part.tmp", "*.tmp"]
->>>>>>> Stashed changes
-=======
-        patterns = ["*.part", "*.part.*", "*.part.tmp", "*.tmp"]
->>>>>>> Stashed changes
         for pat in patterns:
             full_pat = os.path.join(folder, pat)
             for fp in glob.glob(full_pat):
@@ -271,13 +181,11 @@ def cleanup_download_folder(folder):
         pass
     return removed
 
-
 # -------------------------
 # Filename helpers
 # -------------------------
 _INVALID_FN_CHARS = r'<>:"/\\|?*\0'  # include NUL
 _INVALID_FN_RE = re.compile(r'[<>:"/\\|?*\x00]')
-
 
 def sanitize_filename(name: str, max_length: int = 240) -> str:
     """
@@ -293,7 +201,6 @@ def sanitize_filename(name: str, max_length: int = 240) -> str:
     if len(name) > max_length:
         name = name[:max_length].rstrip()
     return name
-
 
 def unique_filename(folder: str, base_name: str, ext: str) -> str:
     """
