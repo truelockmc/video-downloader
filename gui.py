@@ -6,14 +6,25 @@ Includes:
  - automatic uniqueness check (appends " (1)", " (2)", ...) if file exists
  - forwards a forced_outtmpl to DownloadWorker
 """
+
 import os
-import sys
 import signal
+import sys
+
 from PyQt6 import QtCore, QtGui, QtWidgets
-from utils import load_or_create_config, CONFIG_FILE, check_ffmpeg, install_ffmpeg, unique_filename, sanitize_filename
-from workers import MetadataWorker, DownloadWorker
+
+from utils import (
+    CONFIG_FILE,
+    check_ffmpeg,
+    install_ffmpeg,
+    load_or_create_config,
+    sanitize_filename,
+    unique_filename,
+)
+from workers import DownloadWorker, MetadataWorker
 
 config = load_or_create_config()
+
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -40,7 +51,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         folder_layout = QtWidgets.QHBoxLayout()
         self.folder_edit = QtWidgets.QLineEdit()
-        self.folder_edit.setText(config["DownloadOptions"].get("download_folder", os.path.expanduser("~")))
+        self.folder_edit.setText(
+            config["DownloadOptions"].get("download_folder", os.path.expanduser("~"))
+        )
         folder_button = QtWidgets.QPushButton("Choose Folder")
         folder_button.clicked.connect(self.select_folder)
         folder_layout.addWidget(self.folder_edit)
@@ -48,7 +61,9 @@ class MainWindow(QtWidgets.QMainWindow):
         form_layout.addRow("Download Folder:", folder_layout)
 
         self.format_combo = QtWidgets.QComboBox()
-        self.format_combo.addItems(["mp4 (with Audio)", "mp4 (without Audio)", "mp3", "avi", "mkv"])
+        self.format_combo.addItems(
+            ["mp4 (with Audio)", "mp4 (without Audio)", "mp3", "avi", "mkv"]
+        )
         self.format_combo.currentIndexChanged.connect(self.update_quality_ui)
         form_layout.addRow("Format:", self.format_combo)
 
@@ -97,10 +112,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Download table
         self.download_table = QtWidgets.QTableWidget(0, 5)
-        self.download_table.setHorizontalHeaderLabels(["Title", "Status", "Progress", "Size", "Actions"])
+        self.download_table.setHorizontalHeaderLabels(
+            ["Title", "Status", "Progress", "Size", "Actions"]
+        )
         self.download_table.horizontalHeader().setStretchLastSection(True)
-        self.download_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.download_table.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.download_table.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.download_table.setContextMenuPolicy(
+            QtCore.Qt.ContextMenuPolicy.CustomContextMenu
+        )
         self.download_table.customContextMenuRequested.connect(self.show_context_menu)
         main_layout.addWidget(self.download_table)
 
@@ -163,7 +184,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.preview_title.setText(f"Title: {title}")
         pixmap = metadata.get("thumbnail")
         if pixmap:
-            scaled = pixmap.scaled(self.thumbnail_label.size(), QtCore.Qt.AspectRatioMode.KeepAspectRatio, QtCore.Qt.TransformationMode.SmoothTransformation)
+            scaled = pixmap.scaled(
+                self.thumbnail_label.size(),
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
             self.thumbnail_label.setPixmap(scaled)
         else:
             self.thumbnail_label.hide()
@@ -171,11 +196,15 @@ class MainWindow(QtWidgets.QMainWindow):
     def start_download(self):
         url = self.url_edit.text().strip()
         if not url:
-            QtWidgets.QMessageBox.critical(self, "Error", "Please enter a valid file URL.")
+            QtWidgets.QMessageBox.critical(
+                self, "Error", "Please enter a valid file URL."
+            )
             return
         folder = self.folder_edit.text().strip()
         if not folder:
-            QtWidgets.QMessageBox.critical(self, "Error", "Please choose a download folder.")
+            QtWidgets.QMessageBox.critical(
+                self, "Error", "Please choose a download folder."
+            )
             return
         fmt = self.format_combo.currentText()
         if fmt == "mp3":
@@ -203,7 +232,9 @@ class MainWindow(QtWidgets.QMainWindow):
         suggested = sanitize_filename(suggested)
 
         # Ask user for filename (without extension)
-        base_name, ok = QtWidgets.QInputDialog.getText(self, "Filename", f"Save as (without extension):", text=suggested)
+        base_name, ok = QtWidgets.QInputDialog.getText(
+            self, "Filename", f"Save as (without extension):", text=suggested
+        )
         if not ok:
             return  # user cancelled
         base_name = base_name.strip()
@@ -214,19 +245,44 @@ class MainWindow(QtWidgets.QMainWindow):
         final_fullpath = unique_filename(folder, base_name, default_ext)
 
         # Prepare worker with forced_outtmpl = final_fullpath
-        worker = DownloadWorker(url, folder, fmt, video_quality, audio_bitrate, config["DownloadOptions"], cached_metadata=(self.cached_metadata if self.cached_url == url else None), forced_outtmpl=final_fullpath)
+        worker = DownloadWorker(
+            url,
+            folder,
+            fmt,
+            video_quality,
+            audio_bitrate,
+            config["DownloadOptions"],
+            cached_metadata=(self.cached_metadata if self.cached_url == url else None),
+            forced_outtmpl=final_fullpath,
+        )
         row = self.download_table.rowCount()
         self.download_table.insertRow(row)
-        for col, text in enumerate(["Loading metadata...", "Waiting", "0%", "Unknown", "Right click for options"]):
+        for col, text in enumerate(
+            [
+                "Loading metadata...",
+                "Waiting",
+                "0%",
+                "Unknown",
+                "Right click for options",
+            ]
+        ):
             item = QtWidgets.QTableWidgetItem(text)
-            item.setFlags(QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled)
+            item.setFlags(
+                QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled
+            )
             self.download_table.setItem(row, col, item)
         self.active_downloads[row] = worker
         self.download_progress[row] = 0
 
-        worker.title_signal.connect(lambda t, r=row: self.download_table.item(r, 0).setText(t))
-        worker.progress_signal.connect(lambda p, s, r=row: self.update_download_row(r, p, s))
-        worker.size_signal.connect(lambda s, r=row: self.download_table.item(r, 3).setText(s))
+        worker.title_signal.connect(
+            lambda t, r=row: self.download_table.item(r, 0).setText(t)
+        )
+        worker.progress_signal.connect(
+            lambda p, s, r=row: self.update_download_row(r, p, s)
+        )
+        worker.size_signal.connect(
+            lambda s, r=row: self.download_table.item(r, 3).setText(s)
+        )
         worker.finished_signal.connect(lambda r=row: self.download_finished(r))
         worker.error_signal.connect(lambda err, r=row: self.download_error(r, err))
         worker.start()
@@ -237,15 +293,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.download_table.item(row, 1).setText(status)
         self.download_table.item(row, 2).setText(f"{progress:.2f}%")
         if "paused" in status.lower():
-            color = QtGui.QColor("#F39C12")   # Orange
+            color = QtGui.QColor("#F39C12")  # Orange
         elif "cancelled" in status.lower():
-            color = QtGui.QColor("#E74C3C")   # Red
+            color = QtGui.QColor("#E74C3C")  # Red
         elif "finished" in status.lower():
-            color = QtGui.QColor("#2ECC71")   # Green
+            color = QtGui.QColor("#2ECC71")  # Green
         elif "waiting" in status.lower():
-            color = QtGui.QColor("#F1C40F")   # Light yellow
+            color = QtGui.QColor("#F1C40F")  # Light yellow
         elif "downloading" in status.lower():
-            color = QtGui.QColor("#3498DB")   # Blue
+            color = QtGui.QColor("#3498DB")  # Blue
         else:
             color = QtGui.QColor("#3498DB")
         for col in range(self.download_table.columnCount()):
@@ -260,7 +316,9 @@ class MainWindow(QtWidgets.QMainWindow):
             if "cancelled" in status:
                 continue
             try:
-                progress = float(self.download_table.item(row, 2).text().replace("%", ""))
+                progress = float(
+                    self.download_table.item(row, 2).text().replace("%", "")
+                )
                 total_progress += progress
                 count += 1
             except:
@@ -333,8 +391,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 self,
                 "Active downloads",
                 "There are active downloads. Are you sure you want to quit? This will cancel all active downloads.",
-                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
-                QtWidgets.QMessageBox.StandardButton.No
+                QtWidgets.QMessageBox.StandardButton.Yes
+                | QtWidgets.QMessageBox.StandardButton.No,
+                QtWidgets.QMessageBox.StandardButton.No,
             )
             if reply == QtWidgets.QMessageBox.StandardButton.No:
                 event.ignore()
@@ -354,8 +413,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Cleanup download folder always (best-effort)
         try:
-            folder = config["DownloadOptions"].get("download_folder", os.path.expanduser("~"))
+            folder = config["DownloadOptions"].get(
+                "download_folder", os.path.expanduser("~")
+            )
             from utils import cleanup_download_folder
+
             cleanup_download_folder(folder)
         except Exception:
             pass
@@ -366,9 +428,13 @@ class MainWindow(QtWidgets.QMainWindow):
 def main_app():
     app = QtWidgets.QApplication(sys.argv)
     if not check_ffmpeg():
-        install = QtWidgets.QMessageBox.question(None, "ffmpeg missing",
-                                                 "ffmpeg is not installed. Install now?",
-                                                 QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No)
+        install = QtWidgets.QMessageBox.question(
+            None,
+            "ffmpeg missing",
+            "ffmpeg is not installed. Install now?",
+            QtWidgets.QMessageBox.StandardButton.Yes
+            | QtWidgets.QMessageBox.StandardButton.No,
+        )
         if install == QtWidgets.QMessageBox.StandardButton.Yes:
             install_ffmpeg()
         else:
@@ -387,10 +453,13 @@ def main_app():
     # Ensure Ctrl+C triggers the same close flow: post a close() to the window
     def _sigint_handler(signum, frame):
         try:
-            QtCore.QMetaObject.invokeMethod(window, "close", QtCore.Qt.ConnectionType.QueuedConnection)
+            QtCore.QMetaObject.invokeMethod(
+                window, "close", QtCore.Qt.ConnectionType.QueuedConnection
+            )
         except Exception:
             # fallback: exit
             os._exit(0)
+
     signal.signal(signal.SIGINT, _sigint_handler)
 
     window.show()

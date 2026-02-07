@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
-from typing import List, Optional
 import argparse
+import os
 import shlex
 import sys
-import os
+from typing import List, Optional
 
 import yt_dlp
 
-from utils import load_or_create_config, sanitize_filename, unique_filename, get_videasy_headers
-from workers import build_ydl_opts, YTDLPLogger
+from utils import (
+    get_videasy_headers,
+    load_or_create_config,
+    sanitize_filename,
+    unique_filename,
+)
+from workers import YTDLPLogger, build_ydl_opts
 
 RESOLUTIONS = ["best", "1080", "720", "480", "360"]
 BITRATES = ["320", "256", "192", "128"]
 FORMATS = ["mp4 (with Audio)", "mp4 (without Audio)", "mp3", "avi", "mkv"]
+
 
 def parse_ytdlp_args(arg_list: Optional[List[str]]) -> List[str]:
     if not arg_list:
@@ -23,6 +29,7 @@ def parse_ytdlp_args(arg_list: Optional[List[str]]) -> List[str]:
         return shlex.split(arg_list[0])
     except Exception:
         return [arg_list[0]]
+
 
 def ask_choice(prompt: str, choices: List[str]) -> Optional[str]:
     while True:
@@ -42,32 +49,60 @@ def ask_choice(prompt: str, choices: List[str]) -> Optional[str]:
             continue
         return choices[idx]
 
+
 def progress_hook(d):
-    status = d.get('status')
-    if status == 'downloading':
-        downloaded = d.get('downloaded_bytes', 0)
-        total = d.get('total_bytes') or d.get('total_bytes_estimate')
+    status = d.get("status")
+    if status == "downloading":
+        downloaded = d.get("downloaded_bytes", 0)
+        total = d.get("total_bytes") or d.get("total_bytes_estimate")
         if total:
             pct = downloaded / total * 100
             sys.stdout.write(f"\rDownloading: {pct:.2f}% ({downloaded}/{total} bytes)")
         else:
             sys.stdout.write(f"\rDownloading: {downloaded} bytes")
         sys.stdout.flush()
-    elif status == 'finished':
+    elif status == "finished":
         print("\nDownload finished (processing).")
-    elif status == 'error':
+    elif status == "error":
         print("\nDownload error.", file=sys.stderr)
 
+
 def run_cli(argv: Optional[List[str]] = None) -> int:
-    parser = argparse.ArgumentParser(prog="video-downloader (cli)", description="CLI for video-downloader (reuses workers options)")
-    parser.add_argument("--cli", "-c", action="store_true", help="Start in CLI mode (ignored here)")
+    parser = argparse.ArgumentParser(
+        prog="video-downloader (cli)",
+        description="CLI for video-downloader (reuses workers options)",
+    )
+    parser.add_argument(
+        "--cli", "-c", action="store_true", help="Start in CLI mode (ignored here)"
+    )
     parser.add_argument("url", nargs="?", help="Video URL")
-    parser.add_argument("--resolution", "-r", help="Video max height (best, 1080, 720, ...)")
-    parser.add_argument("--bitrate", "-b", help="Audio bitrate in kbps (320,256,192,128)")
-    parser.add_argument("--format", "-f", help="Format (mp4 (with Audio), mp4 (without Audio), mp3, avi, mkv)")
-    parser.add_argument("--filename", "-n", help="Optional filename (without extension). If not provided, filename is NOT prompted interactively.")
-    parser.add_argument("--folder", "-d", help="Download folder (if omitted, folder from config is used)")
-    parser.add_argument("--ytdlp-args", "-a", nargs="*", help="Raw yt-dlp args (single quoted string or multiple args)")
+    parser.add_argument(
+        "--resolution", "-r", help="Video max height (best, 1080, 720, ...)"
+    )
+    parser.add_argument(
+        "--bitrate", "-b", help="Audio bitrate in kbps (320,256,192,128)"
+    )
+    parser.add_argument(
+        "--format",
+        "-f",
+        help="Format (mp4 (with Audio), mp4 (without Audio), mp3, avi, mkv)",
+    )
+    parser.add_argument(
+        "--filename",
+        "-n",
+        help="Optional filename (without extension). If not provided, filename is NOT prompted interactively.",
+    )
+    parser.add_argument(
+        "--folder",
+        "-d",
+        help="Download folder (if omitted, folder from config is used)",
+    )
+    parser.add_argument(
+        "--ytdlp-args",
+        "-a",
+        nargs="*",
+        help="Raw yt-dlp args (single quoted string or multiple args)",
+    )
     args = parser.parse_args(argv)
 
     # Ensure URL
@@ -109,24 +144,30 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     if base_name:
         final_fullpath = unique_filename(folder, base_name, default_ext)
 
-    ydl_opts = build_ydl_opts(fmt or "mp4 (with Audio)", resolution, bitrate, net_config)
-    ydl_opts['progress_hooks'] = [progress_hook]
-    ydl_opts['logger'] = YTDLPLogger()
+    ydl_opts = build_ydl_opts(
+        fmt or "mp4 (with Audio)", resolution, bitrate, net_config
+    )
+    ydl_opts["progress_hooks"] = [progress_hook]
+    ydl_opts["logger"] = YTDLPLogger()
 
     # Naive passthrough for -o/--output from extra args
     if extra_ytdlp:
         for i, a in enumerate(extra_ytdlp):
             if a in ("-o", "--output") and i + 1 < len(extra_ytdlp):
-                ydl_opts['outtmpl'] = extra_ytdlp[i + 1]
+                ydl_opts["outtmpl"] = extra_ytdlp[i + 1]
 
     if final_fullpath:
-        ydl_opts['outtmpl'] = final_fullpath
+        ydl_opts["outtmpl"] = final_fullpath
     else:
-        ydl_opts.setdefault('outtmpl', os.path.join(folder, '%(title)s.%(ext)s'))
+        ydl_opts.setdefault("outtmpl", os.path.join(folder, "%(title)s.%(ext)s"))
 
     if fmt == "mp3" and bitrate:
-        if 'postprocessors' in ydl_opts and isinstance(ydl_opts['postprocessors'], list) and ydl_opts['postprocessors']:
-            ydl_opts['postprocessors'][0]['preferredquality'] = bitrate
+        if (
+            "postprocessors" in ydl_opts
+            and isinstance(ydl_opts["postprocessors"], list)
+            and ydl_opts["postprocessors"]
+        ):
+            ydl_opts["postprocessors"][0]["preferredquality"] = bitrate
 
     # Print summary
     print("Starting download with options:")
@@ -148,7 +189,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         return 0
     except Exception as e:
         err = str(e).lower()
-        if ("403" in err or "forbidden" in err):
+        if "403" in err or "forbidden" in err:
             print("\nReceived 403/forbidden — retrying with special Videasy headers...")
             try:
                 ydl_opts_with_headers = dict(ydl_opts)
@@ -163,6 +204,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         else:
             print("\nDownload failed:", e)
             return 1
+
 
 if __name__ == "__main__":
     rc = run_cli()
