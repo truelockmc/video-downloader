@@ -1,71 +1,139 @@
 #!/usr/bin/env python3
-from PyQt6 import QtWidgets
+from PyQt6 import QtGui, QtWidgets
 
 
 def modern_stylesheet(app):
-    """Apply modern rounded styling WITHOUT changing background colors"""
     stylesheet = """
+    /* Main Font Settings */
+    * {
+        font-family: 'Inter', 'Roboto', 'Helvetica Neue', sans-serif;
+        font-weight: 500;
+    }
+
     /* LineEdit - abgerundete Ecken */
     QLineEdit {
-        border: 2px solid #555;
-        border-radius: 8px;
-        padding: 8px 12px;
-        font-size: 12px;
+        border: 2px solid #222;
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 10pt;
+        background-color: #1a1a1a;
+        color: #b0b0b0;
     }
 
     QLineEdit:focus {
-        border: 2px solid #0d47a1;
+        border: 2px solid #0D47A1;
+        background-color: #212121;
     }
 
     /* Buttons - abgerundete Ecken */
     QPushButton {
         border: none;
-        border-radius: 8px;
-        padding: 10px 20px;
-        font-weight: bold;
-        font-size: 12px;
-        background-color: #2196F3;
-        color: white;
+        border-radius: 6px;
+        padding: 8px 16px;
+        font-weight: 600;
+        font-size: 10pt;
+        background-color: #0D47A1;
+        color: #f5f5f5;
     }
 
     QPushButton:hover {
-        background-color: #1976D2;
+        background-color: #0A3D91;
     }
 
     QPushButton:pressed {
-        background-color: #0d47a1;
+        background-color: #082563;
     }
 
-    /* ComboBox - abgerundete Ecken */
-    QComboBox {
-        border: 2px solid #555;
-        border-radius: 8px;
-        padding: 8px 12px;
-        font-size: 12px;
-    }
-
-    QComboBox:focus {
-        border: 2px solid #0d47a1;
-    }
-
-    QComboBox::drop-down {
+    QPushButton:disabled {
+        background-color: #404040;
+        color: #707070;
         border: none;
         border-radius: 6px;
     }
 
+    /* ComboBox - abgerundete Ecken */
+    QComboBox {
+        border: 2px solid #222;
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 10pt;
+        background-color: #1a1a1a;
+        color: #b0b0b0;
+    }
+
+    QComboBox:focus {
+        border: 2px solid #0D47A1;
+        background-color: #212121;
+    }
+
+    QComboBox::drop-down {
+        border: none;
+        border-radius: 5px;
+        width: 20px;
+    }
+
+    QComboBox QAbstractItemView {
+        background-color: #0f0f0f;
+        color: #b0b0b0;
+        outline: none;
+        border: 2px solid #0D47A1;
+        border-radius: 6px;
+        margin: 0px;
+    }
+
+    QComboBox QAbstractItemView::item {
+        padding: 10px 12px;
+        margin: 2px 4px;
+        border-radius: 5px;
+        background-color: #0f0f0f;
+        color: #b0b0b0;
+    }
+
+    QComboBox QAbstractItemView::item:hover {
+        background-color: #1976D2;
+        color: #ffffff;
+        font-weight: bold;
+        padding: 10px 12px;
+    }
+
+    QComboBox QAbstractItemView::item:selected {
+        background-color: #0D47A1;
+        color: #ffffff;
+        font-weight: bold;
+        padding: 10px 12px;
+    }
+
+    QComboBox QAbstractItemView::item:selected:hover {
+        background-color: #1976D2;
+        color: #ffffff;
+        font-weight: bold;
+    }
+
     /* GroupBox - abgerundete Ecken */
     QGroupBox {
-        border: 2px solid #555;
-        border-radius: 8px;
-        margin-top: 10px;
-        padding-top: 10px;
-        font-weight: bold;
+        border: 2px solid #222;
+        border-radius: 6px;
+        margin-top: 8px;
+        padding-top: 8px;
+        padding-left: 6px;
+        padding-right: 6px;
+        padding-bottom: 6px;
+        font-weight: 600;
+        font-size: 10pt;
+        color: #b0b0b0;
     }
 
     QGroupBox::title {
         subcontrol-origin: margin;
-        left: 10px;
-        padding: 0 3px 0 3px;
+        left: 8px;
+        padding: 0 2px 0 2px;
+        color: #b0b0b0;
+    }
+
+    /* Label */
+    QLabel {
+        font-size: 10pt;
+        color: #b0b0b0;
     }
     """
     app.setStyleSheet(stylesheet)

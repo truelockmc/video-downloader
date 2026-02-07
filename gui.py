@@ -8,6 +8,7 @@ Includes:
 """
 
 import os
+import random
 import signal
 import sys
 
@@ -45,7 +46,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Input form
         form_layout = QtWidgets.QFormLayout()
+        examples = [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://www.instagram.com/p/ABC123...",
+            "https://www.tiktok.com/@user/video/123456",
+        ]
+
         self.url_edit = QtWidgets.QLineEdit()
+        self.url_edit.setPlaceholderText(f"e.g. {random.choice(examples)}")
         form_layout.addRow("Video URL:", self.url_edit)
         self.url_edit.textChanged.connect(self.on_url_changed)
 
@@ -95,12 +103,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.thumbnail_label.hide()
         main_layout.addWidget(self.thumbnail_label)
 
-        self.preview_title = QtWidgets.QLabel("Title: -")
+        self.preview_title = QtWidgets.QLabel("")
         main_layout.addWidget(self.preview_title)
 
         # Download button
         top_action_layout = QtWidgets.QVBoxLayout()
         self.download_button = QtWidgets.QPushButton("Start Download")
+        self.download_button.setEnabled(False)  # deactivated initially
         self.download_button.clicked.connect(self.start_download)
         top_action_layout.addWidget(self.download_button)
         main_layout.addLayout(top_action_layout)
@@ -131,10 +140,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def on_url_changed(self, text):
         text = text.strip()
         if not text:
+            self.preview_title.setText("")
+            self.thumbnail_label.hide()
+            self.download_button.setEnabled(False)
             return
         if text != self.last_url:
             self.last_url = text
-            self.preview_title.setText("Title: Loading metadata...")
+            self.preview_title.setText("Fetching...")
+            self.download_button.setEnabled(False)
             self.thumbnail_label.setText("Loading thumbnail...")
             self.thumbnail_label.show()
             QtCore.QTimer.singleShot(100, self.load_metadata)
@@ -178,10 +191,14 @@ class MainWindow(QtWidgets.QMainWindow):
         current_url = self.url_edit.text().strip()
         if current_url != "":
             self.cached_url = current_url
-        self.cached_metadata = metadata
+            self.cached_metadata = metadata
 
         title = metadata.get("title", "")
-        self.preview_title.setText(f"Title: {title}")
+        self.preview_title.setText(title)
+        font = self.preview_title.font()
+        font.setBold(True)
+        font.setPointSize(11)
+        self.preview_title.setFont(font)
         pixmap = metadata.get("thumbnail")
         if pixmap:
             scaled = pixmap.scaled(
@@ -192,6 +209,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.thumbnail_label.setPixmap(scaled)
         else:
             self.thumbnail_label.hide()
+        self.download_button.setEnabled(True)
 
     def start_download(self):
         url = self.url_edit.text().strip()
