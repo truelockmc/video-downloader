@@ -11,8 +11,8 @@ import os
 import signal
 import sys
 
+from gui_styling import modern_stylesheet
 from PyQt6 import QtCore, QtGui, QtWidgets
-
 from utils import (
     CONFIG_FILE,
     check_ffmpeg,
@@ -439,15 +439,7 @@ def main_app():
             install_ffmpeg()
         else:
             sys.exit(1)
-    dark_stylesheet = """
-        QWidget { background-color: #2E2E2E; color: #FFFFFF; }
-        QLineEdit, QComboBox, QPlainTextEdit { background-color: #3E3E3E; color: #FFFFFF; }
-        QPushButton { background-color: #3E3E3E; border: none; padding: 5px; }
-        QPushButton:hover { background-color: #5E5E5E; }
-        QHeaderView::section { background-color: #3E3E3E; color: #FFFFFF; }
-        QTableWidget { gridline-color: #95A5A6; }
-    """
-    app.setStyleSheet(dark_stylesheet)
+    modern_stylesheet(app)
     window = MainWindow()
 
     # Ensure Ctrl+C triggers the same close flow: post a close() to the window
