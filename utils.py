@@ -85,12 +85,15 @@ def install_ffmpeg():
                 ]
             elif shutil.which("pacman"):
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
                 pkg_cmds = [
                     ("pacman -Sy", "pacman -S --noconfirm ffmpeg")
                 ]
 
             if not pkg_cmds:
 =======
+=======
+>>>>>>> Stashed changes
                 subprocess.run(
                     ["sudo", "pacman", "-Sy", "ffmpeg", "--noconfirm"], check=True
                 )
@@ -151,12 +154,15 @@ def install_ffmpeg():
 
         else:
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
             if error_msg:
                 QtWidgets.QMessageBox.critical(
                     None, "Error",
                     error_msg
                 )
 =======
+=======
+>>>>>>> Stashed changes
             QtWidgets.QMessageBox.critical(None, "Error", error_msg)
             sys.exit(1)
 >>>>>>> Stashed changes
@@ -167,6 +173,7 @@ def install_ffmpeg():
             f"ffmpeg installation failed:\n{e}\n\nPlease install ffmpeg manually from https://ffmpeg.org/download.html.",
         )
         sys.exit(0)
+
 
 
 def network_speed_test():
@@ -242,7 +249,11 @@ def cleanup_download_folder(folder):
         if not os.path.isdir(folder):
             return removed
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         patterns = ['*.part', '*.part.*', '*.part.tmp', '*.tmp', '*.ytdl']
+=======
+        patterns = ["*.part", "*.part.*", "*.part.tmp", "*.tmp"]
+>>>>>>> Stashed changes
 =======
         patterns = ["*.part", "*.part.*", "*.part.tmp", "*.tmp"]
 >>>>>>> Stashed changes
