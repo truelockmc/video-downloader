@@ -17,7 +17,7 @@ def modern_stylesheet(app):
         padding: 6px 10px;
         font-size: 10pt;
         background-color: #1a1a1a;
-        color: #b0b0b0;
+        color: #d0d0d0;
     }
 
     QLineEdit:focus {
@@ -33,7 +33,7 @@ def modern_stylesheet(app):
         font-weight: 600;
         font-size: 10pt;
         background-color: #0D47A1;
-        color: #f5f5f5;
+        color: #e0e0e0;
     }
 
     QPushButton:hover {
@@ -58,7 +58,7 @@ def modern_stylesheet(app):
         padding: 6px 10px;
         font-size: 10pt;
         background-color: #1a1a1a;
-        color: #b0b0b0;
+        color: #d0d0d0;
     }
 
     QComboBox:focus {
@@ -74,7 +74,7 @@ def modern_stylesheet(app):
 
     QComboBox QAbstractItemView {
         background-color: #0f0f0f;
-        color: #b0b0b0;
+        color: #d0d0d0;
         outline: none;
         border: 2px solid #0D47A1;
         border-radius: 6px;
@@ -86,7 +86,7 @@ def modern_stylesheet(app):
         margin: 2px 4px;
         border-radius: 5px;
         background-color: #0f0f0f;
-        color: #b0b0b0;
+        color: #d0d0d0;
     }
 
     QComboBox QAbstractItemView::item:hover {
@@ -120,20 +120,28 @@ def modern_stylesheet(app):
         padding-bottom: 6px;
         font-weight: 600;
         font-size: 10pt;
-        color: #b0b0b0;
+        color: #d0d0d0;
     }
 
     QGroupBox::title {
         subcontrol-origin: margin;
         left: 8px;
         padding: 0 2px 0 2px;
-        color: #b0b0b0;
+        color: #d0d0d0;
     }
 
     /* Label */
     QLabel {
         font-size: 10pt;
-        color: #b0b0b0;
+        color: #d0d0d0;
+    }
+
+    /* Error Label */
+    QLabel#urlError {
+        color: #ff6b6b;
+        font-weight: bold;
+        font-size: 9pt;
+        margin-top: -8px;
     }
     """
     app.setStyleSheet(stylesheet)

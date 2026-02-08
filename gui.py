@@ -32,7 +32,7 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Video Downloader UI")
-        self.resize(900, 750)
+        self.resize(700, 600)
 
         # Cached metadata
         self.cached_url = None
@@ -56,6 +56,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.url_edit.setPlaceholderText(f"e.g. {random.choice(examples)}")
         form_layout.addRow("Video URL:", self.url_edit)
         self.url_edit.textChanged.connect(self.on_url_changed)
+
+        self.url_error_label = QtWidgets.QLabel("❌ No valid URL!")
+        self.url_error_label.setStyleSheet(
+            "color: #ff6b6b; font-weight: bold; font-size: 9pt; margin-top: 4px;"
+        )
+        self.url_error_label.setVisible(False)
+        form_layout.addRow("", self.url_error_label)
+
+        self.error_animation = QtCore.QPropertyAnimation(
+            self.url_error_label, b"geometry"
+        )
+        self.error_animation.setDuration(200)
 
         folder_layout = QtWidgets.QHBoxLayout()
         self.folder_edit = QtWidgets.QLineEdit()
@@ -138,19 +150,69 @@ class MainWindow(QtWidgets.QMainWindow):
         self.download_progress = {}
 
     def on_url_changed(self, text):
-        text = text.strip()
-        if not text:
+        url = self.url_edit.text().strip()
+
+        # Hide error on empty input
+        if not url:
+            self.url_error_label.setVisible(False)
             self.preview_title.setText("")
             self.thumbnail_label.hide()
             self.download_button.setEnabled(False)
             return
-        if text != self.last_url:
-            self.last_url = text
-            self.preview_title.setText("Fetching...")
-            self.download_button.setEnabled(False)
-            self.thumbnail_label.setText("Loading thumbnail...")
-            self.thumbnail_label.show()
-            QtCore.QTimer.singleShot(100, self.load_metadata)
+
+        if url == self.last_url:
+            return
+
+        self.last_url = url
+
+        # Show loading state
+        self.preview_title.setText("Fetching metadata...")
+        self.thumbnail_label.setText("Loading thumbnail...")
+        self.thumbnail_label.show()
+        self.download_button.setEnabled(False)
+
+        self.metadata_worker = MetadataWorker(url)
+        self.metadata_worker.metadata_signal.connect(self.on_metadata_received)
+        self.metadata_worker.error_signal.connect(self.on_metadata_error)
+        self.metadata_worker.start()
+
+    def on_metadata_error(self, error_message):
+        """Handle metadata error from yt-dlp"""
+        # Show error label when yt-dlp returns an error
+        self.url_error_label.setVisible(True)
+        self.url_error_label.setText("❌ No valid URL!")
+        self.preview_title.setText("")
+        self.thumbnail_label.hide()
+        self.download_button.setEnabled(False)
+
+    def on_metadata_received(self, metadata):
+        """Handle successful metadata retrieval"""
+        self.url_error_label.setVisible(False)
+
+        current_url = self.url_edit.text().strip()
+        if current_url != "":
+            self.cached_url = current_url
+            self.cached_metadata = metadata
+
+        title = metadata.get("title", "")
+        self.preview_title.setText(title)
+        font = self.preview_title.font()
+        font.setBold(True)
+        font.setPointSize(11)
+        self.preview_title.setFont(font)
+
+        pixmap = metadata.get("thumbnail")
+        if pixmap:
+            scaled = pixmap.scaled(
+                self.thumbnail_label.size(),
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
+            self.thumbnail_label.setPixmap(scaled)
+        else:
+            self.thumbnail_label.hide()
+
+        self.download_button.setEnabled(True)
 
     def select_folder(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Choose Folder")
