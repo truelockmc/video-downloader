@@ -133,7 +133,7 @@ class MainWindow(QtWidgets.QMainWindow):
         form_layout.addRow("Video URL:", self.url_edit)
         self.url_edit.textChanged.connect(self.on_url_changed)
 
-        self.url_error_label = QtWidgets.QLabel("❌ No valid URL!")
+        self.url_error_label = QtWidgets.QLabel("❌ No valid URL or unsupported Site!")
         self.url_error_label.setStyleSheet(
             "color: #ff6b6b; font-weight: bold; font-size: 9pt; margin-top: 4px;"
         )
@@ -308,7 +308,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def on_metadata_error(self, error_message):
         """Handle metadata error from yt-dlp"""
         self.url_error_label.setVisible(True)
-        self.url_error_label.setText("❌ No valid URL!")
+        self.url_error_label.setText("❌ No valid URL or unsupported Site!")
         self.preview_title.setText("")
         self.thumbnail_label.hide()
         self.download_button.setEnabled(False)
