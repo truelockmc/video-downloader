@@ -27,6 +27,82 @@ from workers import DownloadWorker, MetadataWorker
 config = load_or_create_config()
 
 
+class HoverTooltip(QtWidgets.QWidget):
+    """Custom hover tooltip that displays over the table"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(
+            QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.WindowStaysOnTopHint
+            | QtCore.Qt.WindowType.NoDropShadowWindowHint
+        )
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        # Main layout
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Container with border
+        container = QtWidgets.QWidget()
+        container.setStyleSheet(
+            """
+            background-color: #1a1a1a;
+            border: 2px solid #0D47A1;
+            border-radius: 8px;
+            padding: 10px;
+        """
+        )
+        container_layout = QtWidgets.QVBoxLayout(container)
+        container_layout.setContentsMargins(10, 10, 10, 10)
+
+        # Thumbnail
+        self.thumbnail = QtWidgets.QLabel()
+        self.thumbnail.setFixedSize(150, 100)
+        self.thumbnail.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.thumbnail.setStyleSheet("border: 1px solid #333; border-radius: 4px;")
+        container_layout.addWidget(self.thumbnail)
+
+        # Title
+        self.title_label = QtWidgets.QLabel()
+        self.title_label.setStyleSheet(
+            "color: #d0d0d0; font-weight: bold; font-size: 10pt;"
+        )
+        self.title_label.setWordWrap(True)
+        self.title_label.setMaximumWidth(170)
+        container_layout.addWidget(self.title_label)
+
+        # Filename
+        self.filename_label = QtWidgets.QLabel()
+        self.filename_label.setStyleSheet("color: #b0b0b0; font-size: 9pt;")
+        self.filename_label.setWordWrap(True)
+        self.filename_label.setMaximumWidth(170)
+        container_layout.addWidget(self.filename_label)
+
+        layout.addWidget(container)
+        self.hide()
+
+    def show_tooltip(self, title, filename, thumbnail_pixmap, pos):
+        """Show tooltip at given position"""
+        self.title_label.setText(f"Title: {title}")
+        self.filename_label.setText(f"File: {filename}")
+
+        if thumbnail_pixmap:
+            scaled = thumbnail_pixmap.scaled(
+                150,
+                100,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
+            self.thumbnail.setPixmap(scaled)
+        else:
+            self.thumbnail.setText("No Preview")
+
+        # Position tooltip
+        self.move(pos)
+        self.show()
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
@@ -146,8 +222,61 @@ class MainWindow(QtWidgets.QMainWindow):
         self.download_table.customContextMenuRequested.connect(self.show_context_menu)
         main_layout.addWidget(self.download_table)
 
+        # Hover tooltip
+        self.hover_tooltip = HoverTooltip(self)
+        self.hover_timer = QtCore.QTimer()
+        self.hover_timer.timeout.connect(self.show_hover_tooltip)
+        self.download_table.setMouseTracking(True)
+        self.download_table.cellEntered.connect(self.on_table_cell_entered)
+
         self.active_downloads = {}
         self.download_progress = {}
+        self.last_hovered_row = -1
+
+    def on_table_cell_entered(self, row, col):
+        """Called when mouse enters a table cell"""
+        if row != self.last_hovered_row:
+            self.last_hovered_row = row
+            self.hover_timer.stop()
+            self.hover_tooltip.hide()
+            self.hover_timer.start(1500)
+
+    def show_hover_tooltip(self):
+        """Show the tooltip after 1.5 seconds"""
+        if self.last_hovered_row < 0:
+            return
+
+        row = self.last_hovered_row
+        title = self.download_table.item(row, 0).text()
+
+        # Get the worker to extract filename and thumbnail
+        worker = self.active_downloads.get(row)
+        filename = ""
+        thumbnail = None
+
+        if worker and hasattr(worker, "current_outtmpl"):
+            filename = (
+                os.path.basename(worker.current_outtmpl)
+                if worker.current_outtmpl
+                else "Unknown"
+            )
+
+        # Try to get thumbnail from cached metadata
+        if self.cached_metadata and "thumbnail" in self.cached_metadata:
+            thumbnail = self.cached_metadata.get("thumbnail")
+
+        rect = self.download_table.visualItemRect(self.download_table.item(row, 0))
+        table_pos = self.download_table.mapToGlobal(rect.bottomLeft())
+        tooltip_pos = QtCore.QPoint(table_pos.x() + 10, table_pos.y() + 10)
+
+        self.hover_tooltip.show_tooltip(title, filename, thumbnail, tooltip_pos)
+
+    def mouseleaveEvent(self, event):
+        """Hide tooltip when leaving window"""
+        if not self.download_table.underMouse():
+            self.hover_timer.stop()
+            self.hover_tooltip.hide()
+        super().mouseleaveEvent(event)
 
     def on_url_changed(self, text):
         url = self.url_edit.text().strip()
@@ -178,7 +307,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_metadata_error(self, error_message):
         """Handle metadata error from yt-dlp"""
-        # Show error label when yt-dlp returns an error
         self.url_error_label.setVisible(True)
         self.url_error_label.setText("❌ No valid URL!")
         self.preview_title.setText("")
@@ -236,42 +364,6 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.video_group.show()
             self.audio_group.show()
-
-    def load_metadata(self):
-        url = self.url_edit.text().strip()
-        if not url:
-            return
-        self.preview_title.setText("Title: Loading metadata...")
-        self.thumbnail_label.setText("Loading thumbnail...")
-        self.thumbnail_label.show()
-        self.metadata_worker = MetadataWorker(url)
-        self.metadata_worker.metadata_signal.connect(self.on_metadata_loaded)
-        self.metadata_worker.error_signal.connect(lambda e: print("Metadata error:", e))
-        self.metadata_worker.start()
-
-    def on_metadata_loaded(self, metadata):
-        current_url = self.url_edit.text().strip()
-        if current_url != "":
-            self.cached_url = current_url
-            self.cached_metadata = metadata
-
-        title = metadata.get("title", "")
-        self.preview_title.setText(title)
-        font = self.preview_title.font()
-        font.setBold(True)
-        font.setPointSize(11)
-        self.preview_title.setFont(font)
-        pixmap = metadata.get("thumbnail")
-        if pixmap:
-            scaled = pixmap.scaled(
-                self.thumbnail_label.size(),
-                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                QtCore.Qt.TransformationMode.SmoothTransformation,
-            )
-            self.thumbnail_label.setPixmap(scaled)
-        else:
-            self.thumbnail_label.hide()
-        self.download_button.setEnabled(True)
 
     def start_download(self):
         url = self.url_edit.text().strip()
