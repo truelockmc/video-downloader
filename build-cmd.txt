@@ -1,8 +1,8 @@
 win:
-python -m PyInstaller --noconfirm --onedir --windowed --clean --exclude-module pycryptodomex.selftest --exclude-module pycryptodomex.tests --name "Video Downloader" main.py
+python -m PyInstaller --noconfirm --onedir --windowed --clean --noupx  --exclude-module pycryptodomex.selftest --exclude-module pycryptodomex.tests --name "Video Downloader" main.py
 
 linux:
-python -m PyInstaller --noconfirm --onedir --clean --windowed \
+python -m PyInstaller --noconfirm --onedir --clean --windowed --noupx \
   --exclude-module pycryptodomex.selftest \
   --exclude-module pycryptodomex.tests \
   --name "Video Downloader" main.py
