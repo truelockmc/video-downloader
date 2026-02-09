@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-from PyQt6 import QtGui, QtWidgets
-
-
 def modern_stylesheet(app):
     stylesheet = """
     /* Main Font Settings */

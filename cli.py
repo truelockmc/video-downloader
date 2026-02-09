@@ -6,11 +6,9 @@ import sys
 from typing import List, Optional
 
 import yt_dlp
-
 from utils import (
     get_videasy_headers,
     load_or_create_config,
-    sanitize_filename,
     unique_filename,
 )
 from workers import YTDLPLogger, build_ydl_opts
