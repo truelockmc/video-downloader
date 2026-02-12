@@ -296,7 +296,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.last_hovered_row = row
             self.hover_timer.stop()
             self.hover_tooltip.hide()
-            self.hover_timer.start(1500)
+            self.hover_timer.start(500)
 
     def eventFilter(self, obj, event):
         """Filter events to detect when mouse leaves the table"""
