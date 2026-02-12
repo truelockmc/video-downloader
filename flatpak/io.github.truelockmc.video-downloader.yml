@@ -21,9 +21,9 @@ modules:
   - name: video-downloader
     buildsystem: simple
     build-commands:
-      - install -D flatpak/video-downloader.sh /app/bin/video-downloader
-      - chmod +x /app/bin/video-downloader
-      - install -D main.py /app/bin/main.py
+      #      - install -D flatpak/video-downloader.sh /app/bin/video-downloader
+      #      - chmod +x /app/bin/video-downloader
+      - install -D main.py /app/bin/video-downloader
       - install -D gui.py /app/bin/gui.py
       - install -D gui_styling.py /app/bin/gui_styling.py
       - install -D cli.py /app/bin/cli.py
