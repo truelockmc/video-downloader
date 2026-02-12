@@ -21,7 +21,9 @@ modules:
   - name: video-downloader
     buildsystem: simple
     build-commands:
-      - install -D main.py /app/bin/video-downloader
+      - install -D flatpak/video-downloader.sh /app/bin/video-downloader
+      - chmod +x /app/bin/video-downloader
+      - install -D main.py /app/bin/main.py
       - install -D gui.py /app/bin/gui.py
       - install -D gui_styling.py /app/bin/gui_styling.py
       - install -D cli.py /app/bin/cli.py
@@ -37,10 +39,6 @@ modules:
       - type: git
         url: https://github.com/truelockmc/video-downloader.git
         tag: main
-      - type: file
-        path: io.github.truelockmc.video-downloader.desktop
-      - type: file
-        path: io.github.truelockmc.video-downloader.svg
 
 cleanup-commands:
   - /app/cleanup-BaseApp.sh
