@@ -34,6 +34,8 @@ class HoverTooltip(QtWidgets.QWidget):
         super().__init__(parent)
         # No window flags - stay as a child widget
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_Hover)
+        self.setMouseTracking(True)
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
         # Main layout
@@ -70,13 +72,6 @@ class HoverTooltip(QtWidgets.QWidget):
         self.title_label.setMaximumWidth(140)
         container_layout.addWidget(self.title_label)
 
-        # Filename
-        self.filename_label = QtWidgets.QLabel()
-        self.filename_label.setStyleSheet("color: #b0b0b0; font-size: 8pt;")
-        self.filename_label.setWordWrap(True)
-        self.filename_label.setMaximumWidth(140)
-        container_layout.addWidget(self.filename_label)
-
         # Filepath
         self.filepath_label = QtWidgets.QLabel()
         self.filepath_label.setStyleSheet("color: #808080; font-size: 7pt;")
@@ -93,7 +88,6 @@ class HoverTooltip(QtWidgets.QWidget):
     def show_tooltip(self, title, filename, filepath, thumbnail_pixmap, pos):
         """Show tooltip at given position (parent-relative coordinates)"""
         self.title_label.setText(f"Title: {title}")
-        self.filename_label.setText(f"File: {filename}")
         self.filepath_label.setText(f"Path: {filepath}")
         self.current_filepath = filepath
 
@@ -120,7 +114,9 @@ class HoverTooltip(QtWidgets.QWidget):
         """Open file manager and select the file when clicked"""
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             self.open_in_file_manager()
-        super().mousePressEvent(event)
+            event.accept()
+        else:
+            super().mousePressEvent(event)
 
     def open_in_file_manager(self):
         if not self.current_filepath or self.current_filepath == "Unknown":
