@@ -32,12 +32,9 @@ class HoverTooltip(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(
-            QtCore.Qt.WindowType.FramelessWindowHint
-            | QtCore.Qt.WindowType.WindowStaysOnTopHint
-            | QtCore.Qt.WindowType.NoDropShadowWindowHint
-        )
+        # No window flags - stay as a child widget
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
         # Main layout
         layout = QtWidgets.QVBoxLayout(self)
@@ -49,16 +46,17 @@ class HoverTooltip(QtWidgets.QWidget):
             """
             background-color: #1a1a1a;
             border: 2px solid #0D47A1;
-            border-radius: 8px;
-            padding: 10px;
+            border-radius: 6px;
+            padding: 6px;
         """
         )
         container_layout = QtWidgets.QVBoxLayout(container)
-        container_layout.setContentsMargins(10, 10, 10, 10)
+        container_layout.setContentsMargins(6, 6, 6, 6)
+        container_layout.setSpacing(3)
 
         # Thumbnail
         self.thumbnail = QtWidgets.QLabel()
-        self.thumbnail.setFixedSize(150, 100)
+        self.thumbnail.setFixedSize(120, 80)
         self.thumbnail.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.thumbnail.setStyleSheet("border: 1px solid #333; border-radius: 4px;")
         container_layout.addWidget(self.thumbnail)
@@ -66,31 +64,43 @@ class HoverTooltip(QtWidgets.QWidget):
         # Title
         self.title_label = QtWidgets.QLabel()
         self.title_label.setStyleSheet(
-            "color: #d0d0d0; font-weight: bold; font-size: 10pt;"
+            "color: #d0d0d0; font-weight: bold; font-size: 9pt;"
         )
         self.title_label.setWordWrap(True)
-        self.title_label.setMaximumWidth(170)
+        self.title_label.setMaximumWidth(140)
         container_layout.addWidget(self.title_label)
 
         # Filename
         self.filename_label = QtWidgets.QLabel()
-        self.filename_label.setStyleSheet("color: #b0b0b0; font-size: 9pt;")
+        self.filename_label.setStyleSheet("color: #b0b0b0; font-size: 8pt;")
         self.filename_label.setWordWrap(True)
-        self.filename_label.setMaximumWidth(170)
+        self.filename_label.setMaximumWidth(140)
         container_layout.addWidget(self.filename_label)
+
+        # Filepath
+        self.filepath_label = QtWidgets.QLabel()
+        self.filepath_label.setStyleSheet("color: #808080; font-size: 7pt;")
+        self.filepath_label.setWordWrap(True)
+        self.filepath_label.setMaximumWidth(140)
+        container_layout.addWidget(self.filepath_label)
 
         layout.addWidget(container)
         self.hide()
 
-    def show_tooltip(self, title, filename, thumbnail_pixmap, pos):
-        """Show tooltip at given position"""
+        # Store filepath for click handler
+        self.current_filepath = ""
+
+    def show_tooltip(self, title, filename, filepath, thumbnail_pixmap, pos):
+        """Show tooltip at given position (parent-relative coordinates)"""
         self.title_label.setText(f"Title: {title}")
         self.filename_label.setText(f"File: {filename}")
+        self.filepath_label.setText(f"Path: {filepath}")
+        self.current_filepath = filepath
 
         if thumbnail_pixmap:
             scaled = thumbnail_pixmap.scaled(
-                150,
-                100,
+                120,
+                80,
                 QtCore.Qt.AspectRatioMode.KeepAspectRatio,
                 QtCore.Qt.TransformationMode.SmoothTransformation,
             )
@@ -98,9 +108,57 @@ class HoverTooltip(QtWidgets.QWidget):
         else:
             self.thumbnail.setText("No Preview")
 
-        # Position tooltip
+        # Adjust size to content
+        self.adjustSize()
+
+        # Raise Tooltip above other widgets
         self.move(pos)
+        self.raise_()
         self.show()
+
+    def mousePressEvent(self, event):
+        """Open file manager and select the file when clicked"""
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.open_in_file_manager()
+        super().mousePressEvent(event)
+
+    def open_in_file_manager(self):
+        if not self.current_filepath or self.current_filepath == "Unknown":
+            return
+
+        filepath = self.current_filepath
+        if not os.path.exists(filepath):
+            return
+
+        import platform
+        import subprocess
+
+        system = platform.system()
+
+        try:
+            if system == "Windows":
+                # Windows
+                subprocess.run(["explorer", "/select,", filepath])
+            elif system == "Darwin":
+                # macOS
+                subprocess.run(["open", "-R", filepath])
+            elif system == "Linux":
+                # Linux
+                folder = os.path.dirname(filepath)
+                # Try xdg-open
+                try:
+                    subprocess.run(["xdg-open", folder])
+                except:
+                    # Fallback to common file managers
+                    for fm in ["nautilus", "dolphin", "thunar", "nemo", "caja"]:
+                        try:
+                            subprocess.run([fm, folder])
+                            break
+                        except:
+                            continue
+        except Exception:
+            print("failed to open File")
+            pass
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -229,6 +287,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.download_table.setMouseTracking(True)
         self.download_table.cellEntered.connect(self.on_table_cell_entered)
 
+        # Detect when mouse leaves the table
+        self.download_table.viewport().installEventFilter(self)
+
         self.active_downloads = {}
         self.download_progress = {}
         self.last_hovered_row = -1
@@ -241,6 +302,16 @@ class MainWindow(QtWidgets.QMainWindow):
             self.hover_tooltip.hide()
             self.hover_timer.start(1500)
 
+    def eventFilter(self, obj, event):
+        """Filter events to detect when mouse leaves the table"""
+        if obj == self.download_table.viewport():
+            if event.type() == QtCore.QEvent.Type.Leave:
+                # Hide tooltip when mouse leaves table
+                self.hover_timer.stop()
+                self.hover_tooltip.hide()
+                self.last_hovered_row = -1
+        return super().eventFilter(obj, event)
+
     def show_hover_tooltip(self):
         """Show the tooltip after 1.5 seconds"""
         if self.last_hovered_row < 0:
@@ -249,27 +320,37 @@ class MainWindow(QtWidgets.QMainWindow):
         row = self.last_hovered_row
         title = self.download_table.item(row, 0).text()
 
-        # Get the worker to extract filename and thumbnail
+        # Extract Information
         worker = self.active_downloads.get(row)
-        filename = ""
+        filename = "Unknown"
+        filepath = "Unknown"
         thumbnail = None
 
-        if worker and hasattr(worker, "current_outtmpl"):
-            filename = (
-                os.path.basename(worker.current_outtmpl)
-                if worker.current_outtmpl
-                else "Unknown"
-            )
+        if worker:
+            # Get filepath from worker
+            if hasattr(worker, "current_outtmpl") and worker.current_outtmpl:
+                filepath = worker.current_outtmpl
+                filename = os.path.basename(filepath)
 
-        # Try to get thumbnail from cached metadata
-        if self.cached_metadata and "thumbnail" in self.cached_metadata:
+            if hasattr(worker, "cached_metadata") and worker.cached_metadata:
+                if "thumbnail" in worker.cached_metadata:
+                    thumbnail = worker.cached_metadata.get("thumbnail")
+
+        if (
+            not thumbnail
+            and self.cached_metadata
+            and "thumbnail" in self.cached_metadata
+        ):
             thumbnail = self.cached_metadata.get("thumbnail")
 
+        # Calculate position relative to the main window (parent), not global
         rect = self.download_table.visualItemRect(self.download_table.item(row, 0))
-        table_pos = self.download_table.mapToGlobal(rect.bottomLeft())
+        table_pos = self.download_table.mapTo(self, rect.bottomLeft())
         tooltip_pos = QtCore.QPoint(table_pos.x() + 10, table_pos.y() + 10)
 
-        self.hover_tooltip.show_tooltip(title, filename, thumbnail, tooltip_pos)
+        self.hover_tooltip.show_tooltip(
+            title, filename, filepath, thumbnail, tooltip_pos
+        )
 
     def mouseleaveEvent(self, event):
         """Hide tooltip when leaving window"""
