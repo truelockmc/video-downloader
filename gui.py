@@ -317,7 +317,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_table_cell_entered(self, row, col):
         """Called when mouse enters a table cell"""
-        if row != self.last_hovered_row:
+        if row != self.last_hovered_row or not self.hover_tooltip.isVisible():
             self.last_hovered_row = row
             self.hover_timer.stop()
             self.hide_timer.stop()
