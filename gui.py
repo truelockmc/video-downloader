@@ -32,9 +32,12 @@ class HoverTooltip(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        # No window flags - stay as a child widget
+        # Set as a top-level widget to avoid event issues
+        self.setWindowFlags(
+            QtCore.Qt.WindowType.ToolTip | QtCore.Qt.WindowType.FramelessWindowHint
+        )
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_Hover)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setMouseTracking(True)
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
@@ -49,52 +52,66 @@ class HoverTooltip(QtWidgets.QWidget):
             background-color: #1a1a1a;
             border: 2px solid #0D47A1;
             border-radius: 6px;
-            padding: 6px;
         """
         )
+        container.setMouseTracking(True)
         container_layout = QtWidgets.QVBoxLayout(container)
-        container_layout.setContentsMargins(6, 6, 6, 6)
-        container_layout.setSpacing(3)
+        container_layout.setContentsMargins(8, 8, 8, 8)
+        container_layout.setSpacing(6)
 
         # Thumbnail
         self.thumbnail = QtWidgets.QLabel()
-        self.thumbnail.setFixedSize(120, 80)
+        self.thumbnail.setFixedSize(140, 90)
         self.thumbnail.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.thumbnail.setStyleSheet("border: 1px solid #333; border-radius: 4px;")
+        self.thumbnail.setMouseTracking(True)
         container_layout.addWidget(self.thumbnail)
 
         # Title
         self.title_label = QtWidgets.QLabel()
         self.title_label.setStyleSheet(
-            "color: #d0d0d0; font-weight: bold; font-size: 9pt;"
+            "color: #d0d0d0; font-weight: bold; font-size: 8pt;"
         )
         self.title_label.setWordWrap(True)
-        self.title_label.setMaximumWidth(140)
+        self.title_label.setFixedWidth(150)
+        self.title_label.setMinimumHeight(40)
+        self.title_label.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignLeft
+        )
+        self.title_label.setMouseTracking(True)
         container_layout.addWidget(self.title_label)
 
         # Filepath
         self.filepath_label = QtWidgets.QLabel()
         self.filepath_label.setStyleSheet("color: #808080; font-size: 7pt;")
         self.filepath_label.setWordWrap(True)
-        self.filepath_label.setMaximumWidth(140)
+        self.filepath_label.setFixedWidth(150)
+        self.filepath_label.setMinimumHeight(30)
+        self.filepath_label.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignLeft
+        )
+        self.filepath_label.setMouseTracking(True)
         container_layout.addWidget(self.filepath_label)
 
         layout.addWidget(container)
+
+        # Set fixed size to prevent resizing flicker
+        self.setFixedSize(170, 220)
         self.hide()
 
         # Store filepath for click handler
         self.current_filepath = ""
 
     def show_tooltip(self, title, filename, filepath, thumbnail_pixmap, pos):
-        """Show tooltip at given position (parent-relative coordinates)"""
-        self.title_label.setText(f"Title: {title}")
-        self.filepath_label.setText(f"Path: {filepath}")
+        """Show tooltip at given position (global screen coordinates)"""
+        self.title_label.setText(f"{title}")
+        self.filepath_label.setText(f"{filepath}")
         self.current_filepath = filepath
 
         if thumbnail_pixmap:
             scaled = thumbnail_pixmap.scaled(
-                120,
-                80,
+                140,
+                90,
                 QtCore.Qt.AspectRatioMode.KeepAspectRatio,
                 QtCore.Qt.TransformationMode.SmoothTransformation,
             )
@@ -102,10 +119,7 @@ class HoverTooltip(QtWidgets.QWidget):
         else:
             self.thumbnail.setText("No Preview")
 
-        # Adjust size to content
-        self.adjustSize()
-
-        # Raise Tooltip above other widgets
+        # Move to position and show
         self.move(pos)
         self.raise_()
         self.show()
@@ -117,6 +131,15 @@ class HoverTooltip(QtWidgets.QWidget):
             event.accept()
         else:
             super().mousePressEvent(event)
+
+    def enterEvent(self, event):
+        """Mouse entered the tooltip - keep it visible"""
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """Mouse left the tooltip - hide it"""
+        self.hide()
+        super().leaveEvent(event)
 
     def open_in_file_manager(self):
         if not self.current_filepath or self.current_filepath == "Unknown":
@@ -280,6 +303,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.hover_tooltip = HoverTooltip(self)
         self.hover_timer = QtCore.QTimer()
         self.hover_timer.timeout.connect(self.show_hover_tooltip)
+        self.hide_timer = QtCore.QTimer()
+        self.hide_timer.timeout.connect(self.hide_hover_tooltip)
         self.download_table.setMouseTracking(True)
         self.download_table.cellEntered.connect(self.on_table_cell_entered)
 
@@ -295,6 +320,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if row != self.last_hovered_row:
             self.last_hovered_row = row
             self.hover_timer.stop()
+            self.hide_timer.stop()
             self.hover_tooltip.hide()
             self.hover_timer.start(500)
 
@@ -302,11 +328,23 @@ class MainWindow(QtWidgets.QMainWindow):
         """Filter events to detect when mouse leaves the table"""
         if obj == self.download_table.viewport():
             if event.type() == QtCore.QEvent.Type.Leave:
-                # Hide tooltip when mouse leaves table
-                self.hover_timer.stop()
-                self.hover_tooltip.hide()
-                self.last_hovered_row = -1
+                if not self.hover_tooltip.isVisible():
+                    self.hide_timer.start(300)
+                else:
+                    self.hide_timer.start(800)
+                    self.last_hovered_row = -1
+            elif event.type() == QtCore.QEvent.Type.Enter:
+                self.hide_timer.stop()
         return super().eventFilter(obj, event)
+
+    def hide_hover_tooltip(self):
+        """Hide the tooltip after delay, unless mouse is over it"""
+        if not self.hover_tooltip.underMouse():
+            self.hover_tooltip.hide()
+            self.hover_timer.stop()
+            self.hide_timer.stop()
+        else:
+            self.hide_timer.stop()
 
     def show_hover_tooltip(self):
         """Show the tooltip after 1.5 seconds"""
@@ -339,10 +377,11 @@ class MainWindow(QtWidgets.QMainWindow):
         ):
             thumbnail = self.cached_metadata.get("thumbnail")
 
-        # Calculate position relative to the main window (parent), not global
+        # Calculate position in global screen coordinates
         rect = self.download_table.visualItemRect(self.download_table.item(row, 0))
-        table_pos = self.download_table.mapTo(self, rect.bottomLeft())
-        tooltip_pos = QtCore.QPoint(table_pos.x() + 10, table_pos.y() + 10)
+        table_viewport_pos = self.download_table.viewport().mapToGlobal(rect.topRight())
+
+        tooltip_pos = QtCore.QPoint(table_viewport_pos.x() + 15, table_viewport_pos.y())
 
         self.hover_tooltip.show_tooltip(
             title, filename, filepath, thumbnail, tooltip_pos
@@ -690,9 +729,15 @@ def main_app():
             sys.exit(1)
     modern_stylesheet(app)
     window = MainWindow()
+    sigint_received = False
 
     # Ensure Ctrl+C triggers the same close flow: post a close() to the window
     def _sigint_handler(signum, frame):
+        nonlocal sigint_received
+        if sigint_received:
+            print("\nForce quit...")
+            os._exit(1)
+        sigint_received = True
         try:
             QtCore.QMetaObject.invokeMethod(
                 window, "close", QtCore.Qt.ConnectionType.QueuedConnection
@@ -702,6 +747,9 @@ def main_app():
             os._exit(0)
 
     signal.signal(signal.SIGINT, _sigint_handler)
+    timer = QtCore.QTimer()
+    timer.timeout.connect(lambda: None)  # Wake up Qt event loop
+    timer.start(500)
 
     window.show()
     sys.exit(app.exec())
