@@ -14,7 +14,6 @@ import time
 import requests
 import yt_dlp
 from PyQt6 import QtCore, QtGui
-
 from utils import get_videasy_headers, sanitize_filename
 
 
@@ -157,6 +156,147 @@ def build_ydl_opts(fmt, video_quality, audio_bitrate, net_config):
 
 def _ffmpeg_available():
     return shutil.which("ffmpeg") is not None
+
+
+def _is_direct_download_url(url):
+    """Return True for URLs that serve a file directly (e.g. SharePoint download links)
+    where yt-dlp cannot determine a sensible file extension from the URL path."""
+    import urllib.parse
+
+    parsed = urllib.parse.urlparse(url)
+    path = parsed.path.lower()
+    direct_patterns = ["download.aspx", "/_layouts/15/download"]
+    return any(p in path for p in direct_patterns)
+
+
+def _parse_ffmpeg_duration(stderr_line):
+    """Extract total duration in seconds from an ffmpeg Duration line.
+    Returns float seconds or None."""
+    import re
+
+    m = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.?\d*)", stderr_line)
+    if m:
+        h, mi, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
+        return h * 3600 + mi * 60 + s
+    return None
+
+
+def _parse_ffmpeg_progress(stderr_line):
+    """Extract (elapsed_seconds, size_kb) from an ffmpeg progress line.
+    Returns (float, int) or (None, None)."""
+    import re
+
+    time_m = re.search(r"time=(\d+):(\d+):(\d+\.?\d*)", stderr_line)
+    size_m = re.search(r"size=\s*(\d+)kB", stderr_line)
+    if time_m:
+        h, mi, s = int(time_m.group(1)), int(time_m.group(2)), float(time_m.group(3))
+        elapsed = h * 3600 + mi * 60 + s
+        size_kb = int(size_m.group(1)) if size_m else 0
+        return elapsed, size_kb
+    return None, None
+
+
+def _download_direct(url, folder, progress_cb=None, size_cb=None, cancelled_cb=None):
+    """Download a direct-serving URL (e.g. SharePoint) by streaming via ffmpeg.
+
+    yt-dlp cannot handle these because the URL path ends with .aspx rather than a video
+    extension, causing its internal safety check to abort.  We bypass yt-dlp entirely:
+      1. HEAD the URL to get the Content-Disposition filename (if available).
+      2. Run ffmpeg -i <url> -c copy output.mp4, parsing stderr for progress updates.
+
+    progress_cb(percent: float, status: str) — called on every ffmpeg progress line
+    size_cb(size_str: str)                   — called with human-readable download size
+    Returns the output path on success, raises on failure.
+    """
+    import re
+    import subprocess
+    import urllib.parse
+
+    # --- resolve final URL (follow redirects with HEAD) ---
+    head = requests.head(url, allow_redirects=True, timeout=15)
+    final_url = head.url
+
+    # --- determine output filename ---
+    cd = head.headers.get("Content-Disposition", "")
+    match = re.search(
+        r'filename[^;=\n]*=(["\'])?([^;\n]*?)\1(?:;|$)', cd, re.IGNORECASE
+    )
+    if match:
+        raw_name = match.group(2).strip()
+        base = os.path.splitext(raw_name)[0]
+    else:
+        qs = urllib.parse.parse_qs(urllib.parse.urlparse(final_url).query)
+        token = qs.get("share", ["video"])[0]
+        base = sanitize_filename(token) or "video"
+
+    out_path = os.path.join(folder, f"{base}.mp4")
+    counter = 1
+    while os.path.exists(out_path):
+        out_path = os.path.join(folder, f"{base}_{counter}.mp4")
+        counter += 1
+
+    print(f"[direct-dl] Saving to: {out_path}")
+
+    # --- run ffmpeg, read stderr for progress ---
+    cmd = [
+        shutil.which("ffmpeg") or "ffmpeg",
+        "-y",
+        "-i",
+        final_url,
+        "-c",
+        "copy",
+        out_path,
+    ]
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+        bufsize=1,
+    )
+
+    total_secs = None  # filled once we see the Duration line
+
+    for raw_line in proc.stderr:
+        line = raw_line.rstrip()
+        if not line:
+            continue
+        print(f"[ffmpeg] {line}")
+
+        if cancelled_cb and cancelled_cb():
+            proc.terminate()
+            raise Exception("Cancelled")
+
+        # Try to get total duration from the input info block
+        if total_secs is None:
+            total_secs = _parse_ffmpeg_duration(line)
+
+        # Parse progress lines (contain "time=" and "size=")
+        elapsed, size_kb = _parse_ffmpeg_progress(line)
+        if elapsed is not None and progress_cb:
+            if total_secs and total_secs > 0:
+                percent = min(elapsed / total_secs * 100.0, 99.9)
+            else:
+                percent = -1  # unknown total; UI should show indeterminate
+
+            # Build a human-readable size string
+            size_mb = size_kb / 1024.0
+            if size_mb >= 1024:
+                size_str = f"{size_mb / 1024:.2f} GB"
+            else:
+                size_str = f"{size_mb:.1f} MB"
+
+            status = f"Downloading ({size_str})"
+            progress_cb(max(percent, 0), status)
+            if size_cb:
+                size_cb(size_str)
+
+    proc.wait()
+    if proc.returncode != 0:
+        raise Exception(f"ffmpeg exited with code {proc.returncode}")
+    if progress_cb:
+        progress_cb(100.0, "Finished")
+    return out_path
 
 
 class MetadataWorker(QtCore.QThread):
@@ -304,6 +444,26 @@ class DownloadWorker(QtCore.QThread):
             pass
 
     def run(self):
+        # --- SharePoint / direct-download bypass ---
+        # yt-dlp cannot handle URLs whose path ends with .aspx because its internal
+        # safety check rejects the "unusual extension", even when the server sends a
+        # proper video file.  We detect these URLs early and stream them straight
+        # through ffmpeg, completely bypassing yt-dlp.
+        if _is_direct_download_url(self.url):
+            try:
+                out = _download_direct(
+                    self.url,
+                    self.folder,
+                    progress_cb=self.progress_signal.emit,
+                    size_cb=self.size_signal.emit,
+                    cancelled_cb=lambda: self._cancelled,
+                )
+                self.title_signal.emit(os.path.basename(out))
+                self.finished_signal.emit()
+            except Exception as e:
+                self.error_signal.emit(str(e))
+            return  # done – skip all yt-dlp logic below
+
         ydl_opts = self._build_base_opts()
 
         # If forced_outtmpl is provided, use it directly
