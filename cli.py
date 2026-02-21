@@ -11,7 +11,7 @@ from utils import (
     load_or_create_config,
     unique_filename,
 )
-from workers import YTDLPLogger, build_ydl_opts
+from workers import YTDLPLogger, build_ydl_opts, _is_direct_download_url, _download_direct
 
 RESOLUTIONS = ["best", "1080", "720", "480", "360"]
 BITRATES = ["320", "256", "192", "128"]
@@ -179,7 +179,33 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     if extra_ytdlp:
         print("  Extra yt-dlp args:", " ".join(extra_ytdlp))
 
-    # Perform download; retry on 403 with Videasy headers
+    # --- SharePoint / direct-download bypass (same as GUI path) ---
+    if _is_direct_download_url(url):
+        print("  Mode: direct ffmpeg download (SharePoint/aspx URL detected)")
+
+        def cli_progress(percent, status):
+            sys.stdout.write(f"\r{status}  {percent:.1f}%   ")
+            sys.stdout.flush()
+
+        def cli_size(size_str):
+            pass  # already shown inside cli_progress status string
+
+        cancelled = [False]
+        try:
+            out = _download_direct(
+                url,
+                folder,
+                progress_cb=cli_progress,
+                size_cb=cli_size,
+                cancelled_cb=lambda: cancelled[0],
+            )
+            print(f"\nDownload finished: {out}")
+            return 0
+        except Exception as e:
+            print(f"\nDownload failed: {e}")
+            return 1
+
+    # Perform download via yt-dlp; retry on 403 with Videasy headers
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
