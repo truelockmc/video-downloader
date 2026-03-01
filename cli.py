@@ -6,16 +6,35 @@ import sys
 from typing import List, Optional
 
 import yt_dlp
+
 from utils import (
     get_videasy_headers,
     load_or_create_config,
     unique_filename,
 )
-from workers import YTDLPLogger, build_ydl_opts, _is_direct_download_url, _download_direct
+from workers import (
+    YTDLPLogger,
+    _download_direct,
+    _is_direct_download_url,
+    build_ydl_opts,
+)
 
 RESOLUTIONS = ["best", "1080", "720", "480", "360"]
 BITRATES = ["320", "256", "192", "128"]
 FORMATS = ["mp4 (with Audio)", "mp4 (without Audio)", "mp3", "avi", "mkv"]
+
+
+class CLILogger(YTDLPLogger):
+    def __init__(self):
+        super().__init__()
+        self.progress_hook_active = False
+
+    def _finish_progress_line(self):
+        if self._last_was_progress or self.progress_hook_active:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            self._last_was_progress = False
+            self.progress_hook_active = False
 
 
 def parse_ytdlp_args(arg_list: Optional[List[str]]) -> List[str]:
@@ -39,7 +58,7 @@ def ask_choice(prompt: str, choices: List[str]) -> Optional[str]:
         if s == "":
             return None
         if not s.isdigit():
-            print("Invalid input — please enter a number.")
+            print("Invalid input: please enter a number.")
             continue
         idx = int(s) - 1
         if idx < 0 or idx >= len(choices):
@@ -48,21 +67,36 @@ def ask_choice(prompt: str, choices: List[str]) -> Optional[str]:
         return choices[idx]
 
 
-def progress_hook(d):
-    status = d.get("status")
-    if status == "downloading":
-        downloaded = d.get("downloaded_bytes", 0)
-        total = d.get("total_bytes") or d.get("total_bytes_estimate")
-        if total:
-            pct = downloaded / total * 100
-            sys.stdout.write(f"\rDownloading: {pct:.2f}% ({downloaded}/{total} bytes)")
-        else:
-            sys.stdout.write(f"\rDownloading: {downloaded} bytes")
-        sys.stdout.flush()
-    elif status == "finished":
-        print("\nDownload finished (processing).")
-    elif status == "error":
-        print("\nDownload error.", file=sys.stderr)
+def make_progress_hook(logger: CLILogger):
+    def progress_hook(d):
+        status = d.get("status")
+        if status == "downloading":
+            downloaded = d.get("downloaded_bytes", 0)
+            total = d.get("total_bytes") or d.get("total_bytes_estimate")
+            speed = d.get("speed")
+            eta = d.get("eta")
+            speed_str = f"  {speed / 1024:.0f} KB/s" if speed else ""
+            eta_str = f"  ETA {eta}s" if eta is not None else ""
+            if total:
+                pct = downloaded / total * 100
+                sys.stdout.write(f"\rDownloading: {pct:.1f}%{speed_str}{eta_str}   ")
+            else:
+                sys.stdout.write(f"\rDownloading: {downloaded} bytes{speed_str}   ")
+            sys.stdout.flush()
+            logger.progress_hook_active = True
+        elif status == "finished":
+            logger.progress_hook_active = False
+            logger._last_was_progress = False
+            sys.stdout.write("\n")
+            print("Download finished, post-processing...")
+            sys.stdout.flush()
+        elif status == "error":
+            logger.progress_hook_active = False
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            print("Download error.", file=sys.stderr)
+
+    return progress_hook
 
 
 def run_cli(argv: Optional[List[str]] = None) -> int:
@@ -145,8 +179,9 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     ydl_opts = build_ydl_opts(
         fmt or "mp4 (with Audio)", resolution, bitrate, net_config
     )
-    ydl_opts["progress_hooks"] = [progress_hook]
-    ydl_opts["logger"] = YTDLPLogger()
+    cli_logger = CLILogger()
+    ydl_opts["progress_hooks"] = [make_progress_hook(cli_logger)]
+    ydl_opts["logger"] = cli_logger
 
     # Naive passthrough for -o/--output from extra args
     if extra_ytdlp:
@@ -214,10 +249,14 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     except Exception as e:
         err = str(e).lower()
         if "403" in err or "forbidden" in err:
-            print("\nReceived 403/forbidden — retrying with special Videasy headers...")
+            print("\nReceived 403/forbidden, retrying with special Videasy headers...")
             try:
                 ydl_opts_with_headers = dict(ydl_opts)
                 ydl_opts_with_headers["http_headers"] = get_videasy_headers()
+                ydl_opts_with_headers["logger"] = cli_logger
+                ydl_opts_with_headers["progress_hooks"] = [
+                    make_progress_hook(cli_logger)
+                ]
                 with yt_dlp.YoutubeDL(ydl_opts_with_headers) as ydl:
                     ydl.download([url])
                 print("\nDownload finished (with headers).")
