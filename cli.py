@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import io
 import os
 import shlex
 import sys
@@ -35,6 +36,22 @@ class CLILogger(YTDLPLogger):
             sys.stdout.flush()
             self._last_was_progress = False
             self.progress_hook_active = False
+
+
+class _AutoFlush(io.TextIOWrapper):
+    def __init__(self, stream):
+        self._stream = stream
+
+    def write(self, s):
+        result = self._stream.write(s)
+        self._stream.flush()
+        return result
+
+    def flush(self):
+        self._stream.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
 
 
 def parse_ytdlp_args(arg_list: Optional[List[str]]) -> List[str]:
@@ -100,6 +117,11 @@ def make_progress_hook(logger: CLILogger):
 
 
 def run_cli(argv: Optional[List[str]] = None) -> int:
+    if not isinstance(sys.stdout, _AutoFlush):
+        sys.stdout = _AutoFlush(sys.stdout)
+    if not isinstance(sys.stderr, _AutoFlush):
+        sys.stderr = _AutoFlush(sys.stderr)
+
     parser = argparse.ArgumentParser(
         prog="video-downloader (cli)",
         description="CLI for video-downloader (reuses workers options)",
