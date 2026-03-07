@@ -4,29 +4,42 @@ Helper Functions: ffmpeg-check/install, network speed test, config,
 Videasy-Header builder and cleanup helper.
 """
 
+import configparser
+import glob
 import os
+import platform
+import re
+import shutil
 import subprocess
 import sys
-import platform
-import shutil
 import time
-import configparser
+
 import requests
-import glob
-import re
 from PyQt6 import QtWidgets
 
 CONFIG_FILE = "download_config.ini"
-TEST_URL = "https://ipv4.download.thinkbroadband.com/1MB.zip"  # 1MB test file for speed test
+TEST_URL = (
+    "https://ipv4.download.thinkbroadband.com/1MB.zip"  # 1MB test file for speed test
+)
+
 
 def check_ffmpeg():
     try:
-        subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        subprocess.run(
+            ["ffmpeg", "-version"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
         return True
     except Exception:
-        QtWidgets.QMessageBox.warning(None, "ffmpeg required",
-                                      "This program requires ffmpeg to merge file formats.")
+        QtWidgets.QMessageBox.warning(
+            None,
+            "ffmpeg required",
+            "This program requires ffmpeg to merge file formats.",
+        )
         return False
+
 
 def install_ffmpeg():
     os_name = platform.system().lower()
@@ -37,7 +50,10 @@ def install_ffmpeg():
         if os_name == "windows":
             # Try winget first
             if shutil.which("winget"):
-                subprocess.run(["winget", "install", "Gyan.FFmpeg.Essentials", "-e", "--silent"], check=True)
+                subprocess.run(
+                    ["winget", "install", "Gyan.FFmpeg.Essentials", "-e", "--silent"],
+                    check=True,
+                )
                 installed = True
             # Try Chocolatey if winget is not available
             elif shutil.which("choco"):
@@ -67,7 +83,9 @@ def install_ffmpeg():
                 subprocess.run(["sudo", "dnf", "install", "-y", "ffmpeg"], check=True)
                 installed = True
             elif shutil.which("pacman"):
-                subprocess.run(["sudo", "pacman", "-Sy", "ffmpeg", "--noconfirm"], check=True)
+                subprocess.run(
+                    ["sudo", "pacman", "-Sy", "ffmpeg", "--noconfirm"], check=True
+                )
                 installed = True
             else:
                 error_msg = (
@@ -75,27 +93,25 @@ def install_ffmpeg():
                     "or download from https://ffmpeg.org/download.html."
                 )
         else:
-            error_msg = (
-                f"Unsupported OS: {os_name}. Please install ffmpeg from https://ffmpeg.org/download.html."
-            )
+            error_msg = f"Unsupported OS: {os_name}. Please install ffmpeg from https://ffmpeg.org/download.html."
 
         if installed:
             QtWidgets.QMessageBox.information(
-                None, "Success",
-                "ffmpeg was successfully installed. Please restart the program."
+                None,
+                "Success",
+                "ffmpeg was successfully installed. Please restart the program.",
             )
         else:
-            QtWidgets.QMessageBox.critical(
-                None, "Error",
-                error_msg
-            )
+            QtWidgets.QMessageBox.critical(None, "Error", error_msg)
             sys.exit(1)
     except Exception as e:
         QtWidgets.QMessageBox.critical(
-            None, "Error",
-            f"ffmpeg installation failed:\n{e}\n\nPlease install ffmpeg manually from https://ffmpeg.org/download.html."
+            None,
+            "Error",
+            f"ffmpeg installation failed:\n{e}\n\nPlease install ffmpeg manually from https://ffmpeg.org/download.html.",
         )
         sys.exit(1)
+
 
 def network_speed_test():
     try:
@@ -114,6 +130,7 @@ def network_speed_test():
     except Exception:
         return 1.0
 
+
 def load_or_create_config():
     config = configparser.ConfigParser()
     if os.path.exists(CONFIG_FILE):
@@ -124,20 +141,37 @@ def load_or_create_config():
     if speed >= 5:
         concurrent_fragments = "10"
         http_chunk_size = "4194304"
+        max_concurrent = "5"
     elif speed >= 2:
         concurrent_fragments = "5"
         http_chunk_size = "2097152"
+        max_concurrent = "3"
     else:
         concurrent_fragments = "3"
         http_chunk_size = "1048576"
+        max_concurrent = "2"
     config["DownloadOptions"] = {
         "concurrent_fragment_downloads": concurrent_fragments,
         "http_chunk_size": http_chunk_size,
-        "download_folder": os.path.expanduser("~")
+        "download_folder": os.path.expanduser("~"),
+        "max_concurrent_downloads": max_concurrent,
     }
     with open(CONFIG_FILE, "w") as configfile:
         config.write(configfile)
     return config
+
+
+def format_filesize(size_bytes) -> str:
+    """Convert a byte count to a human-readable string (e.g. '4.20 MB')."""
+    if not size_bytes:
+        return "Unknown"
+    size = float(size_bytes)
+    for unit in ["B", "KB", "MB", "GB"]:
+        if size < 1024:
+            return f"{size:.2f} {unit}"
+        size /= 1024
+    return f"{size:.2f} TB"
+
 
 def get_videasy_headers():
     """
@@ -147,8 +181,9 @@ def get_videasy_headers():
     return {
         "User-Agent": "Mozilla/5.0",
         "Origin": "https://player.videasy.net",
-        "Referer": "https://player.videasy.net/"
+        "Referer": "https://player.videasy.net/",
     }
+
 
 def cleanup_download_folder(folder):
     """
@@ -166,7 +201,7 @@ def cleanup_download_folder(folder):
         folder = os.path.expanduser(folder)
         if not os.path.isdir(folder):
             return removed
-        patterns = ['*.part', '*.part.*', '*.part.tmp', '*.tmp', '*.ytdl']
+        patterns = ["*.part", "*.part.*", "*.part.tmp", "*.tmp", "*.ytdl"]
         for pat in patterns:
             full_pat = os.path.join(folder, pat)
             for fp in glob.glob(full_pat):
@@ -181,11 +216,13 @@ def cleanup_download_folder(folder):
         pass
     return removed
 
+
 # -------------------------
 # Filename helpers
 # -------------------------
 _INVALID_FN_CHARS = r'<>:"/\\|?*\0'  # include NUL
 _INVALID_FN_RE = re.compile(r'[<>:"/\\|?*\x00]')
+
 
 def sanitize_filename(name: str, max_length: int = 240) -> str:
     """
@@ -201,6 +238,7 @@ def sanitize_filename(name: str, max_length: int = 240) -> str:
     if len(name) > max_length:
         name = name[:max_length].rstrip()
     return name
+
 
 def unique_filename(folder: str, base_name: str, ext: str) -> str:
     """

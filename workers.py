@@ -14,7 +14,8 @@ import time
 import requests
 import yt_dlp
 from PyQt6 import QtCore, QtGui
-from utils import get_videasy_headers, sanitize_filename
+
+from utils import format_filesize, get_videasy_headers, sanitize_filename
 
 
 class YTDLPLogger:
@@ -311,15 +312,15 @@ class MetadataWorker(QtCore.QThread):
         # Base Options
         ydl_opts = {
             "skip_download": True,
-            "extract_flat": True,
-            "force_generic_extractor": True,
             "cachedir": False,
             "logger": YTDLPLogger(),
+            "quiet": True,
+            "no_warnings": True,
         }
 
         def _extract(opts):
             with yt_dlp.YoutubeDL(opts) as ydl:
-                return ydl.extract_info(self.url, download=False, process=False)
+                return ydl.extract_info(self.url, download=False)
 
         try:
             info = _extract(ydl_opts)
@@ -341,17 +342,7 @@ class MetadataWorker(QtCore.QThread):
         title = info.get("title", "")
         thumb_url = info.get("thumbnail", "")
         filesize = info.get("filesize") or info.get("filesize_approx")
-        if filesize:
-            size = filesize
-            for unit in ["B", "KB", "MB", "GB"]:
-                if size < 1024:
-                    filesize_str = f"{size:.2f} {unit}"
-                    break
-                size /= 1024
-            else:
-                filesize_str = f"{size:.2f} TB"
-        else:
-            filesize_str = "Unknown"
+        filesize_str = format_filesize(filesize)
         pixmap = None
         if thumb_url:
             try:
@@ -373,6 +364,7 @@ class DownloadWorker(QtCore.QThread):
     error_signal = QtCore.pyqtSignal(str)
     title_signal = QtCore.pyqtSignal(str)
     size_signal = QtCore.pyqtSignal(str)
+    stats_signal = QtCore.pyqtSignal(str, str)  # (speed_str, eta_str)
 
     def __init__(
         self,
@@ -410,8 +402,31 @@ class DownloadWorker(QtCore.QThread):
             downloaded = d.get("downloaded_bytes", 0)
             percent = (downloaded / total * 100) if total else 0
             self.progress_signal.emit(percent, "Downloading")
+
+            # Speed
+            speed = d.get("speed")
+            if speed is None:
+                speed_str = "—"
+            elif speed >= 1024 * 1024:
+                speed_str = f"{speed / 1024 / 1024:.1f} MB/s"
+            else:
+                speed_str = f"{speed / 1024:.0f} KB/s"
+
+            # ETA
+            eta = d.get("eta")
+            if eta is None:
+                eta_str = "—"
+            elif eta >= 3600:
+                eta_str = f"{eta // 3600}h {(eta % 3600) // 60}m"
+            elif eta >= 60:
+                eta_str = f"{eta // 60}m {eta % 60}s"
+            else:
+                eta_str = f"{eta}s"
+
+            self.stats_signal.emit(speed_str, eta_str)
         elif d.get("status") == "finished":
             self.progress_signal.emit(100, "Finished")
+            self.stats_signal.emit("—", "—")
 
     def pause(self):
         self._paused = True
@@ -547,17 +562,7 @@ class DownloadWorker(QtCore.QThread):
                     ydl_opts.pop("postprocessor_args", None)
 
                 filesize = info.get("filesize") or info.get("filesize_approx")
-                if filesize:
-                    size = filesize
-                    for unit in ["B", "KB", "MB", "GB"]:
-                        if size < 1024:
-                            filesize_str = f"{size:.2f} {unit}"
-                            break
-                        size /= 1024
-                    else:
-                        filesize_str = f"{size:.2f} TB"
-                else:
-                    filesize_str = "Unknown"
+                filesize_str = format_filesize(filesize)
                 self.size_signal.emit(filesize_str)
             except Exception as e:
                 err_str = str(e).lower()
@@ -586,17 +591,7 @@ class DownloadWorker(QtCore.QThread):
                         else:
                             ydl_opts = ydl_opts_with_headers
                         filesize = info.get("filesize") or info.get("filesize_approx")
-                        if filesize:
-                            size = filesize
-                            for unit in ["B", "KB", "MB", "GB"]:
-                                if size < 1024:
-                                    filesize_str = f"{size:.2f} {unit}"
-                                    break
-                                size /= 1024
-                            else:
-                                filesize_str = f"{size:.2f} TB"
-                        else:
-                            filesize_str = "Unknown"
+                        filesize_str = format_filesize(filesize)
                         # Additional check: if still no video, fall back to 'best'
                         formats = info.get("formats") or []
                         has_video = any(

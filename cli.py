@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import io
 import os
 import shlex
 import sys
@@ -38,7 +37,9 @@ class CLILogger(YTDLPLogger):
             self.progress_hook_active = False
 
 
-class _AutoFlush(io.TextIOWrapper):
+class _AutoFlush:
+    """Thin wrapper around a text stream that flushes after every write."""
+
     def __init__(self, stream):
         self._stream = stream
 

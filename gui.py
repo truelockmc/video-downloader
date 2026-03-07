@@ -12,8 +12,9 @@ import random
 import signal
 import sys
 
-from gui_styling import modern_stylesheet
 from PyQt6 import QtCore, QtGui, QtWidgets
+
+from gui_styling import modern_stylesheet
 from utils import (
     CONFIG_FILE,
     check_ffmpeg,
@@ -285,11 +286,24 @@ class MainWindow(QtWidgets.QMainWindow):
         main_layout.addWidget(self.overall_progress_bar)
 
         # Download table
-        self.download_table = QtWidgets.QTableWidget(0, 5)
+        self.download_table = QtWidgets.QTableWidget(0, 6)
         self.download_table.setHorizontalHeaderLabels(
-            ["Title", "Status", "Progress", "Size", "Actions"]
+            ["Title", "Status", "Progress", "Size", "Speed", "ETA"]
         )
-        self.download_table.horizontalHeader().setStretchLastSection(True)
+        self.download_table.horizontalHeader().setStretchLastSection(False)
+        self.download_table.horizontalHeader().setSectionResizeMode(
+            0, QtWidgets.QHeaderView.ResizeMode.Stretch
+        )
+        for col, width in enumerate([0, 90, 130, 75, 85, 65], start=0):
+            if col == 0:
+                continue
+            self.download_table.setColumnWidth(col, width)
+        self.download_table.verticalHeader().setVisible(False)
+        self.download_table.setAlternatingRowColors(True)
+        self.download_table.setShowGrid(False)
+        self.download_table.setSelectionBehavior(
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+        )
         self.download_table.setEditTriggers(
             QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
         )
@@ -314,6 +328,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.active_downloads = {}
         self.download_progress = {}
         self.last_hovered_row = -1
+
+        # Download queue / concurrency limit
+        self.download_queue = []  # list of (worker, row) not yet started
+        self.active_download_count = 0
+        self._max_concurrent = int(
+            config["DownloadOptions"].get("max_concurrent_downloads", "3")
+        )
 
     def on_table_cell_entered(self, row, col):
         """Called when mouse enters a table cell"""
@@ -481,6 +502,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.video_group.show()
             self.audio_group.show()
 
+    def _make_table_item(self, text: str) -> QtWidgets.QTableWidgetItem:
+        item = QtWidgets.QTableWidgetItem(text)
+        item.setFlags(
+            QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled
+        )
+        return item
+
     def start_download(self):
         url = self.url_edit.text().strip()
         if not url:
@@ -545,20 +573,60 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         row = self.download_table.rowCount()
         self.download_table.insertRow(row)
-        for col, text in enumerate(
-            [
-                "Loading metadata...",
-                "Waiting",
-                "0%",
-                "Unknown",
-                "Right click for options",
-            ]
-        ):
-            item = QtWidgets.QTableWidgetItem(text)
-            item.setFlags(
-                QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled
-            )
-            self.download_table.setItem(row, col, item)
+
+        # Col 0 – Title
+        self.download_table.setItem(
+            row, 0, self._make_table_item("Loading metadata...")
+        )
+        # Col 1 – Status
+        initial_status = (
+            "Queued"
+            if self.active_download_count >= self._max_concurrent
+            else "Waiting"
+        )
+        status_item = self._make_table_item(initial_status)
+        status_item.setTextAlignment(
+            QtCore.Qt.AlignmentFlag.AlignCenter | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        self.download_table.setItem(row, 1, status_item)
+        # Col 2 – Progress bar (widget, not item)
+        progress_bar = QtWidgets.QProgressBar()
+        progress_bar.setRange(0, 100)
+        progress_bar.setValue(0)
+        progress_bar.setTextVisible(True)
+        progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #333;
+                border-radius: 4px;
+                background-color: #1a1a1a;
+                color: #d0d0d0;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #0D47A1;
+                border-radius: 3px;
+            }
+        """)
+        self.download_table.setCellWidget(row, 2, progress_bar)
+        # Col 3 – Size
+        size_item = self._make_table_item("Unknown")
+        size_item.setTextAlignment(
+            QtCore.Qt.AlignmentFlag.AlignCenter | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        self.download_table.setItem(row, 3, size_item)
+        # Col 4 – Speed
+        speed_item = self._make_table_item("—")
+        speed_item.setTextAlignment(
+            QtCore.Qt.AlignmentFlag.AlignCenter | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        self.download_table.setItem(row, 4, speed_item)
+        # Col 5 – ETA
+        eta_item = self._make_table_item("—")
+        eta_item.setTextAlignment(
+            QtCore.Qt.AlignmentFlag.AlignCenter | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        self.download_table.setItem(row, 5, eta_item)
+
         self.active_downloads[row] = worker
         self.download_progress[row] = 0
 
@@ -571,58 +639,122 @@ class MainWindow(QtWidgets.QMainWindow):
         worker.size_signal.connect(
             lambda s, r=row: self.download_table.item(r, 3).setText(s)
         )
+        worker.stats_signal.connect(
+            lambda spd, eta, r=row: self.update_download_stats(r, spd, eta)
+        )
         worker.finished_signal.connect(lambda r=row: self.download_finished(r))
         worker.error_signal.connect(lambda err, r=row: self.download_error(r, err))
-        worker.start()
+
+        # Start immediately or enqueue
+        if self.active_download_count < self._max_concurrent:
+            self.active_download_count += 1
+            worker.start()
+        else:
+            self.download_queue.append((worker, row))
+
         self.url_edit.clear()
+
+    def update_download_stats(self, row, speed: str, eta: str):
+        """Update the Speed and ETA columns from stats_signal."""
+        item_spd = self.download_table.item(row, 4)
+        item_eta = self.download_table.item(row, 5)
+        if item_spd:
+            item_spd.setText(speed)
+        if item_eta:
+            item_eta.setText(eta)
 
     def update_download_row(self, row, progress, status):
         self.download_progress[row] = progress
-        self.download_table.item(row, 1).setText(status)
-        self.download_table.item(row, 2).setText(f"{progress:.2f}%")
-        if "paused" in status.lower():
-            color = QtGui.QColor("#F39C12")  # Orange
-        elif "cancelled" in status.lower():
-            color = QtGui.QColor("#E74C3C")  # Red
-        elif "finished" in status.lower():
-            color = QtGui.QColor("#2ECC71")  # Green
-        elif "waiting" in status.lower():
-            color = QtGui.QColor("#F1C40F")  # Light yellow
-        elif "downloading" in status.lower():
-            color = QtGui.QColor("#3498DB")  # Blue
+        status_item = self.download_table.item(row, 1)
+        if status_item:
+            status_item.setText(status)
+
+        # Map status → color (only applied to the Status cell text)
+        sl = status.lower()
+        if "paused" in sl:
+            fg = QtGui.QColor("#F39C12")  # orange
+            badge = "⏸ Paused"
+        elif "cancelled" in sl:
+            fg = QtGui.QColor("#E74C3C")  # red
+            badge = "✖ Cancelled"
+        elif "finished" in sl:
+            fg = QtGui.QColor("#2ECC71")  # green
+            badge = "✔ Finished"
+        elif "queued" in sl:
+            fg = QtGui.QColor("#95A5A6")  # grey
+            badge = "⏳ Queued"
+        elif "waiting" in sl:
+            fg = QtGui.QColor("#F1C40F")  # yellow
+            badge = "⏳ Waiting"
+        elif "downloading" in sl:
+            fg = QtGui.QColor("#3498DB")  # blue
+            badge = "⬇ Downloading"
+        elif "error" in sl:
+            fg = QtGui.QColor("#E74C3C")  # red
+            badge = f"✖ {status}"
         else:
-            color = QtGui.QColor("#3498DB")
-        for col in range(self.download_table.columnCount()):
-            self.download_table.item(row, col).setBackground(color)
+            fg = QtGui.QColor("#d0d0d0")
+            badge = status
+
+        if status_item:
+            status_item.setText(badge)
+            status_item.setForeground(fg)
+
+        # Update progress bar widget
+        bar = self.download_table.cellWidget(row, 2)
+        if bar:
+            bar.setValue(int(progress))
+
         self.update_overall_progress()
 
     def update_overall_progress(self):
         total_progress = 0
         count = 0
-        for row in range(self.download_table.rowCount()):
-            status = self.download_table.item(row, 1).text().lower()
-            if "cancelled" in status:
+        for row, progress in self.download_progress.items():
+            status_item = self.download_table.item(row, 1)
+            if status_item and "cancelled" in status_item.text().lower():
                 continue
-            try:
-                progress = float(
-                    self.download_table.item(row, 2).text().replace("%", "")
-                )
-                total_progress += progress
-                count += 1
-            except:
-                pass
+            total_progress += progress
+            count += 1
         overall = total_progress / count if count > 0 else 0
         self.overall_progress_bar.setValue(int(overall))
 
     def download_finished(self, row):
-        self.download_table.item(row, 1).setText("Finished")
+        item = self.download_table.item(row, 1)
+        if item:
+            item.setText("✔ Finished")
+            item.setForeground(QtGui.QColor("#2ECC71"))
         self.download_progress[row] = 100
+        bar = self.download_table.cellWidget(row, 2)
+        if bar:
+            bar.setValue(100)
         self.update_overall_progress()
+        self.active_download_count = max(0, self.active_download_count - 1)
+        self._start_next_queued()
 
     def download_error(self, row, err):
-        self.download_table.item(row, 1).setText(f"Error: {err}")
+        item = self.download_table.item(row, 1)
+        if item:
+            item.setText(f"✖ Error")
+            item.setForeground(QtGui.QColor("#E74C3C"))
+            item.setToolTip(err)
         self.download_progress[row] = 0
         self.update_overall_progress()
+        self.active_download_count = max(0, self.active_download_count - 1)
+        self._start_next_queued()
+
+    def _start_next_queued(self):
+        """Start as many queued downloads as the concurrency limit allows."""
+        while self.download_queue and self.active_download_count < self._max_concurrent:
+            next_worker, next_row = self.download_queue.pop(0)
+            if getattr(next_worker, "_cancelled", False):
+                continue  # skip cancelled entries
+            self.active_download_count += 1
+            status_item = self.download_table.item(next_row, 1)
+            if status_item:
+                status_item.setText("⏳ Waiting")
+                status_item.setForeground(QtGui.QColor("#F1C40F"))
+            next_worker.start()
 
     def show_context_menu(self, pos):
         index = self.download_table.indexAt(pos)
@@ -642,13 +774,24 @@ class MainWindow(QtWidgets.QMainWindow):
         if action == pause_action:
             if worker._paused:
                 worker.resume()
-                self.download_table.item(row, 1).setText("Downloading")
+                item = self.download_table.item(row, 1)
+                if item:
+                    item.setText("⬇ Downloading")
+                    item.setForeground(QtGui.QColor("#3498DB"))
             else:
                 worker.pause()
-                self.download_table.item(row, 1).setText("Paused")
+                item = self.download_table.item(row, 1)
+                if item:
+                    item.setText("⏸ Paused")
+                    item.setForeground(QtGui.QColor("#F39C12"))
         elif action == cancel_action:
+            # Remove from queue first (if not yet started)
+            self.download_queue = [(w, r) for w, r in self.download_queue if r != row]
             worker.cancel()
-            self.download_table.item(row, 1).setText("Cancelled")
+            item = self.download_table.item(row, 1)
+            if item:
+                item.setText("✖ Cancelled")
+                item.setForeground(QtGui.QColor("#E74C3C"))
             if worker.current_outtmpl:
                 for fname in [worker.current_outtmpl, worker.current_outtmpl + ".part"]:
                     if os.path.exists(fname):

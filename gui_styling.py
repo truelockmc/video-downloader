@@ -140,5 +140,98 @@ def modern_stylesheet(app):
         font-size: 9pt;
         margin-top: -8px;
     }
+
+    /* ── Download Table ── */
+    QTableWidget {
+        background-color: #111111;
+        alternate-background-color: #1a1a1a;
+        color: #d0d0d0;
+        border: 2px solid #222;
+        border-radius: 6px;
+        gridline-color: #222;
+        font-size: 9pt;
+        selection-background-color: transparent;
+        selection-color: #d0d0d0;
+    }
+
+    QTableWidget::item {
+        padding: 4px 8px;
+        border: none;
+        border-right: 1px solid #1e1e1e;
+    }
+
+    QTableWidget::item:last-child {
+        border-right: none;
+    }
+
+    QTableWidget::item:hover {
+        background-color: #1e1e1e;
+        border-right: 1px solid #2a2a2a;
+    }
+
+    QTableWidget::item:selected {
+        background-color: #1a2a3a;
+        color: #e0e0e0;
+        border-right: 1px solid #0D47A1;
+    }
+
+    /* Header */
+    QHeaderView::section {
+        background-color: #0a0a0a;
+        color: #909090;
+        font-size: 8pt;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        padding: 6px 8px;
+        border: none;
+        border-bottom: 2px solid #0D47A1;
+        border-right: 1px solid #222;
+    }
+
+    QHeaderView::section:last {
+        border-right: none;
+    }
+
+    QHeaderView::section:hover {
+        background-color: #111;
+        color: #c0c0c0;
+    }
+
+    /* Scrollbar */
+    QScrollBar:vertical {
+        background: #111;
+        width: 8px;
+        border-radius: 4px;
+    }
+    QScrollBar::handle:vertical {
+        background: #333;
+        border-radius: 4px;
+        min-height: 20px;
+    }
+    QScrollBar::handle:vertical:hover {
+        background: #0D47A1;
+    }
+    QScrollBar::add-line:vertical,
+    QScrollBar::sub-line:vertical {
+        height: 0px;
+    }
+    QScrollBar:horizontal {
+        background: #111;
+        height: 8px;
+        border-radius: 4px;
+    }
+    QScrollBar::handle:horizontal {
+        background: #333;
+        border-radius: 4px;
+        min-width: 20px;
+    }
+    QScrollBar::handle:horizontal:hover {
+        background: #0D47A1;
+    }
+    QScrollBar::add-line:horizontal,
+    QScrollBar::sub-line:horizontal {
+        width: 0px;
+    }
     """
     app.setStyleSheet(stylesheet)
