@@ -20,8 +20,34 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Cache pip packages, invalidates when requirements.txt changes.
+      # yt-dlp updates frequently, so the weekly date segment forces a
+      # fresh install once a week while still saving time on reruns.
+      - name: Cache pip (Windows)
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\pip\Cache
+          key: pip-win-${{ hashFiles('requirements.txt') }}-${{ env.CACHE_WEEK }}
+          restore-keys: |
+            pip-win-${{ hashFiles('requirements.txt') }}-
+            pip-win-
+        env:
+          CACHE_WEEK: ${{ steps.date.outputs.week }}
+
+      - name: Get current week (for cache rotation)
+        id: date
+        run: echo "week=$(Get-Date -UFormat '%Y-%V')" >> $env:GITHUB_OUTPUT
+
       - name: Install dependencies
         run: pip install -r requirements.txt pyinstaller
+
+      # Cache PyInstaller bootloader/hooks, keyed on Python + PyInstaller version
+      - name: Cache PyInstaller
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Roaming\pyinstaller
+          key: pyinstaller-win-py3.12-${{ hashFiles('requirements.txt') }}
+          restore-keys: pyinstaller-win-py3.12-
 
       - name: Build
         run: >
@@ -52,6 +78,30 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Get current week (for cache rotation)
+        id: date
+        run: echo "week=$(date +'%Y-%V')" >> $GITHUB_OUTPUT
+
+      # Cache pip, same weekly-rotation strategy as Windows
+      - name: Cache pip (Linux)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-linux-${{ hashFiles('requirements.txt') }}-${{ steps.date.outputs.week }}
+          restore-keys: |
+            pip-linux-${{ hashFiles('requirements.txt') }}-
+            pip-linux-
+
+      # Cache apt packages list + downloaded .deb files
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            /var/cache/apt/archives
+            /var/lib/apt/lists
+          key: apt-${{ runner.os }}-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: apt-${{ runner.os }}-
+
       - name: Install system dependencies
         run: |
           sudo apt-get update -y
@@ -64,7 +114,23 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt pyinstaller
 
-      # ── 1. PyInstaller onedir build (base for everything) ────
+      # Cache appimagetool binary, it rarely changes
+      - name: Cache appimagetool
+        id: cache-appimagetool
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/appimagetool
+          key: appimagetool-x86_64-continuous
+
+      - name: Download appimagetool (if not cached)
+        if: steps.cache-appimagetool.outputs.cache-hit != 'true'
+        run: |
+          wget -q \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
+            -O /usr/local/bin/appimagetool
+          chmod +x /usr/local/bin/appimagetool
+
+      # ── 1. PyInstaller build ─────────────────────────────────
       - name: PyInstaller build
         run: |
           python -m PyInstaller \
@@ -82,13 +148,6 @@ jobs:
           path: dist/Video Downloader/
 
       # ── 2. AppImage ──────────────────────────────────────────
-      - name: Download appimagetool
-        run: |
-          wget -q \
-            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
-            -O /usr/local/bin/appimagetool
-          chmod +x /usr/local/bin/appimagetool
-
       - name: Create AppDir
         run: |
           APPDIR="AppDir"
@@ -121,8 +180,7 @@ jobs:
           cp "$APPDIR/usr/share/applications/video-downloader.desktop" "$APPDIR/video-downloader.desktop"
 
       - name: Build AppImage
-        run: |
-          ARCH=x86_64 appimagetool AppDir VideoDownloader-x86_64.AppImage
+        run: ARCH=x86_64 appimagetool AppDir VideoDownloader-x86_64.AppImage
 
       - uses: actions/upload-artifact@v4
         with:
