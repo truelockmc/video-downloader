@@ -162,15 +162,15 @@ def load_or_create_config():
 
 
 def format_filesize(size_bytes) -> str:
-    """Convert a byte count to a human-readable string (e.g. '4.20 MB')."""
+    """Convert a byte count to a human-readable string (e.g. '4.2 MB')."""
     if not size_bytes:
         return "Unknown"
     size = float(size_bytes)
     for unit in ["B", "KB", "MB", "GB"]:
         if size < 1024:
-            return f"{size:.2f} {unit}"
+            return f"{size:.1f} {unit}"
         size /= 1024
-    return f"{size:.2f} TB"
+    return f"{size:.1f} TB"
 
 
 def get_videasy_headers():

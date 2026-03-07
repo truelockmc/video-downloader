@@ -294,7 +294,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.download_table.horizontalHeader().setSectionResizeMode(
             0, QtWidgets.QHeaderView.ResizeMode.Stretch
         )
-        for col, width in enumerate([0, 90, 130, 75, 85, 65], start=0):
+        for col, width in enumerate([0, 90, 130, 90, 85, 65], start=0):
             if col == 0:
                 continue
             self.download_table.setColumnWidth(col, width)
