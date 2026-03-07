@@ -1,18 +1,22 @@
 name: Build Binaries
 
 on:
-  workflow_dispatch:  # only runs when manually triggered
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "Build targets (comma-separated: windows, linux, appimage, deb)"
+        required: false
+        default: "windows, linux, appimage, deb"
 
 jobs:
+  # ────────────────────────────────────────────────────────────
   build-windows:
-    name: Build – Windows
+    name: Build, Windows (.exe)
     runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -22,32 +26,29 @@ jobs:
       - name: Build
         run: >
           python -m PyInstaller
-          --noconfirm
-          --onedir
-          --windowed
-          --clean
-          --noupx
+          --noconfirm --onedir --windowed --clean --noupx
           --icon=icon.png
           --exclude-module pycryptodomex.selftest
           --exclude-module pycryptodomex.tests
           --name "Video Downloader"
           main.py
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Zip output
+        run: Compress-Archive -Path "dist\Video Downloader" -DestinationPath "VideoDownloader-Windows.zip"
+
+      - uses: actions/upload-artifact@v4
         with:
           name: VideoDownloader-Windows
-          path: dist/Video Downloader/
+          path: VideoDownloader-Windows.zip
 
+  # ────────────────────────────────────────────────────────────
   build-linux:
-    name: Build – Linux
+    name: Build, Linux (dir / AppImage / .deb)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -55,32 +56,122 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
-            libxcb-xinerama0 \
-            libxcb-cursor0 \
-            libgl1 \
-            libegl1 \
-            libdbus-1-3 \
-            libxkbcommon-x11-0
+            libxcb-xinerama0 libxcb-cursor0 libgl1 libegl1 \
+            libdbus-1-3 libxkbcommon-x11-0 \
+            fuse libfuse2 \
+            dpkg-dev
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt pyinstaller
 
-      - name: Build
+      # ── 1. PyInstaller onedir build (base for everything) ────
+      - name: PyInstaller build
         run: |
           python -m PyInstaller \
-            --noconfirm \
-            --onedir \
-            --windowed \
-            --clean \
-            --noupx \
+            --noconfirm --onedir --windowed --clean --noupx \
             --icon=icon.png \
             --exclude-module pycryptodomex.selftest \
             --exclude-module pycryptodomex.tests \
             --name "Video Downloader" \
             main.py
 
-      - name: Upload artifact
+      - name: Upload plain Linux dir
         uses: actions/upload-artifact@v4
         with:
           name: VideoDownloader-Linux
           path: dist/Video Downloader/
+
+      # ── 2. AppImage ──────────────────────────────────────────
+      - name: Download appimagetool
+        run: |
+          wget -q \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
+            -O /usr/local/bin/appimagetool
+          chmod +x /usr/local/bin/appimagetool
+
+      - name: Create AppDir
+        run: |
+          APPDIR="AppDir"
+          BIN_SRC="dist/Video Downloader"
+
+          mkdir -p "$APPDIR/usr/bin"
+          mkdir -p "$APPDIR/usr/share/applications"
+          mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+
+          cp -r "$BIN_SRC"/. "$APPDIR/usr/bin/"
+          cp icon.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/video-downloader.png"
+          cp icon.png "$APPDIR/video-downloader.png"
+
+          cat > "$APPDIR/usr/share/applications/video-downloader.desktop" <<EOF
+          [Desktop Entry]
+          Name=Video Downloader
+          Exec=Video Downloader
+          Icon=video-downloader
+          Type=Application
+          Categories=AudioVideo;Network;
+          EOF
+
+          cat > "$APPDIR/AppRun" <<'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/Video Downloader" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
+          cp "$APPDIR/usr/share/applications/video-downloader.desktop" "$APPDIR/video-downloader.desktop"
+
+      - name: Build AppImage
+        run: |
+          ARCH=x86_64 appimagetool AppDir VideoDownloader-x86_64.AppImage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VideoDownloader-AppImage
+          path: VideoDownloader-x86_64.AppImage
+
+      # ── 3. .deb ─────────────────────────────────────────────
+      - name: Create .deb package
+        run: |
+          PKG="video-downloader_1.0.0_amd64"
+          BIN_SRC="dist/Video Downloader"
+
+          mkdir -p "$PKG/usr/lib/video-downloader"
+          mkdir -p "$PKG/usr/bin"
+          mkdir -p "$PKG/usr/share/applications"
+          mkdir -p "$PKG/usr/share/icons/hicolor/256x256/apps"
+          mkdir -p "$PKG/DEBIAN"
+
+          cp -r "$BIN_SRC"/. "$PKG/usr/lib/video-downloader/"
+
+          cat > "$PKG/usr/bin/video-downloader" <<'EOF'
+          #!/bin/sh
+          exec /usr/lib/video-downloader/"Video Downloader" "$@"
+          EOF
+          chmod +x "$PKG/usr/bin/video-downloader"
+
+          cp icon.png "$PKG/usr/share/icons/hicolor/256x256/apps/video-downloader.png"
+
+          cat > "$PKG/usr/share/applications/video-downloader.desktop" <<EOF
+          [Desktop Entry]
+          Name=Video Downloader
+          Exec=video-downloader
+          Icon=video-downloader
+          Type=Application
+          Categories=AudioVideo;Network;
+          EOF
+
+          cat > "$PKG/DEBIAN/control" <<EOF
+          Package: video-downloader
+          Version: 2.2.0
+          Architecture: amd64
+          Maintainer: truelockmc
+          Description: GUI & CLI video downloader powered by yt-dlp
+          Depends: libgl1, libegl1, libdbus-1-3, libxkbcommon-x11-0
+          EOF
+
+          dpkg-deb --build --root-owner-group "$PKG"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VideoDownloader-deb
+          path: "*.deb"
