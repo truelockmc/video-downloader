@@ -1,0 +1,86 @@
+name: Build Binaries
+
+on:
+  workflow_dispatch:  # only runs when manually triggered
+
+jobs:
+  build-windows:
+    name: Build – Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build
+        run: >
+          python -m PyInstaller
+          --noconfirm
+          --onedir
+          --windowed
+          --clean
+          --noupx
+          --icon=icon.png
+          --exclude-module pycryptodomex.selftest
+          --exclude-module pycryptodomex.tests
+          --name "Video Downloader"
+          main.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VideoDownloader-Windows
+          path: dist/Video Downloader/
+
+  build-linux:
+    name: Build – Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            libxcb-xinerama0 \
+            libxcb-cursor0 \
+            libgl1 \
+            libegl1 \
+            libdbus-1-3 \
+            libxkbcommon-x11-0
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build
+        run: |
+          python -m PyInstaller \
+            --noconfirm \
+            --onedir \
+            --windowed \
+            --clean \
+            --noupx \
+            --icon=icon.png \
+            --exclude-module pycryptodomex.selftest \
+            --exclude-module pycryptodomex.tests \
+            --name "Video Downloader" \
+            main.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VideoDownloader-Linux
+          path: dist/Video Downloader/
