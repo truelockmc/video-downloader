@@ -59,13 +59,13 @@ jobs:
           --name "Video Downloader"
           main.py
 
-      - name: Zip output
-        run: Compress-Archive -Path "dist\Video Downloader" -DestinationPath "VideoDownloader-Windows.zip"
+      - name: Zip portable output
+        run: Compress-Archive -Path "dist\Video Downloader" -DestinationPath "Windows_x64-portable.zip"
 
       - uses: actions/upload-artifact@v4
         with:
           name: VideoDownloader-Windows
-          path: VideoDownloader-Windows.zip
+          path: Windows_x64-portable.zip
 
   # ────────────────────────────────────────────────────────────
   build-linux:
@@ -141,11 +141,18 @@ jobs:
             --name "Video Downloader" \
             main.py
 
+      - name: Zip portable output
+        run: |
+          mkdir -p zip_out
+          cp -r "dist/Video Downloader" "zip_out/Video Downloader"
+          cd zip_out
+          zip -r "../Linux_x64-portable.zip" "Video Downloader"
+
       - name: Upload plain Linux dir
         uses: actions/upload-artifact@v4
         with:
           name: VideoDownloader-Linux
-          path: dist/Video Downloader/
+          path: Linux_x64-portable.zip
 
       # ── 2. AppImage ──────────────────────────────────────────
       - name: Create AppDir
@@ -190,7 +197,7 @@ jobs:
       # ── 3. .deb ─────────────────────────────────────────────
       - name: Create .deb package
         run: |
-          PKG="video-downloader_1.0.0_amd64"
+          PKG="video-downloader_amd64"
           BIN_SRC="dist/Video Downloader"
 
           mkdir -p "$PKG/usr/lib/video-downloader"
