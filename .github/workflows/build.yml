@@ -39,7 +39,7 @@ jobs:
         run: echo "week=$(Get-Date -UFormat '%Y-%V')" >> $env:GITHUB_OUTPUT
 
       - name: Install dependencies
-        run: pip install -r requirements.txt pyinstaller
+        run: pip install -r requirements.txt pyinstaller pillow
 
       # Cache PyInstaller bootloader/hooks, keyed on Python + PyInstaller version
       - name: Cache PyInstaller
