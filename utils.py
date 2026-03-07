@@ -173,6 +173,79 @@ def format_filesize(size_bytes) -> str:
     return f"{size:.1f} TB"
 
 
+def friendly_error(raw: str) -> str:
+    """
+    Map raw yt-dlp / network exception strings to short, human-readable messages.
+    Falls back to a trimmed version of the original if nothing matches.
+    """
+    s = raw.lower()
+
+    # HTTP / access errors
+    if "403" in s or "forbidden" in s:
+        return "Access denied (403), the site blocked the request."
+    if "401" in s or "unauthorized" in s:
+        return "Login required, please provide credentials."
+    if "404" in s or "not found" in s:
+        return "Video not found (404), the URL may be wrong or deleted."
+    if "429" in s or "too many requests" in s:
+        return "Rate-limited (429), too many requests. Try again later."
+    if "ssl" in s or "certificate" in s:
+        return "SSL/certificate error, check your network or proxy settings."
+
+    # Content availability
+    if "private video" in s or "private" in s and "video" in s:
+        return "Private video, you don't have access."
+    if "members-only" in s or "members only" in s:
+        return "Members-only content, login or subscription required."
+    if "age" in s and ("restrict" in s or "limit" in s or "gate" in s):
+        return "Age-restricted content, login with a verified account."
+    if "unavailable" in s or "not available" in s:
+        return "Video unavailable in your region or has been removed."
+    if "removed" in s or "deleted" in s or "terminated" in s:
+        return "This video has been removed or the account was terminated."
+    if "copyright" in s:
+        return "Video blocked due to a copyright claim."
+    if "live" in s and ("not yet" in s or "upcoming" in s or "premiere" in s):
+        return "This stream hasn't started yet (upcoming/premiere)."
+    if "live event" in s or "this live stream" in s:
+        return "Live stream, live downloads are not supported."
+
+    # Format / extraction
+    if "no video formats" in s or "no formats" in s:
+        return "No downloadable formats found for this URL."
+    if "unsupported url" in s:
+        return "Unsupported URL, this site is not supported."
+    if "unable to extract" in s or "could not extract" in s:
+        return "Could not extract video info, the page structure may have changed."
+    if "extractor" in s and "error" in s:
+        return "Extractor error, yt-dlp may need an update."
+
+    # Network
+    if "timed out" in s or "timeout" in s:
+        return "Connection timed out, check your internet connection."
+    if "connection" in s and ("refused" in s or "reset" in s or "error" in s):
+        return "Network connection error, check your internet connection."
+    if "name or service not known" in s or "getaddrinfo" in s:
+        return "DNS error, could not resolve hostname."
+
+    # ffmpeg
+    if "ffmpeg" in s and ("not found" in s or "no such" in s):
+        return "ffmpeg not found, please install ffmpeg and restart."
+    if "ffmpeg" in s:
+        return "ffmpeg error during post-processing."
+
+    # Cancelled
+    if "cancelled" in s:
+        return "Download was cancelled."
+
+    # Generic fallback, strip yt-dlp prefix noise and cap length
+    cleaned = raw
+    for prefix in ("[yt-dlp error]", "error:", "warning:", "[error]"):
+        if cleaned.lower().startswith(prefix):
+            cleaned = cleaned[len(prefix) :].strip()
+    return cleaned[:120] + ("…" if len(cleaned) > 120 else "")
+
+
 def get_videasy_headers():
     """
     The special headers that are needed for Videasy.

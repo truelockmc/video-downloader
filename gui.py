@@ -18,6 +18,7 @@ from gui_styling import modern_stylesheet
 from utils import (
     CONFIG_FILE,
     check_ffmpeg,
+    friendly_error,
     install_ffmpeg,
     load_or_create_config,
     sanitize_filename,
@@ -241,6 +242,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.format_combo.currentIndexChanged.connect(self.update_quality_ui)
         form_layout.addRow("Format:", self.format_combo)
 
+        self.playlist_checkbox = QtWidgets.QCheckBox("Download entire playlist")
+        self.playlist_checkbox.setChecked(False)
+        self.playlist_checkbox.setVisible(False)
+        self.playlist_checkbox.setStyleSheet("color: #90CAF9; font-size: 9pt;")
+
         # Quality settings
         self.video_quality_combo = QtWidgets.QComboBox()
         self.video_quality_combo.addItems(["best", "1080", "720", "480", "360"])
@@ -274,6 +280,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Download button
         top_action_layout = QtWidgets.QVBoxLayout()
+        top_action_layout.addWidget(self.playlist_checkbox)
         self.download_button = QtWidgets.QPushButton("Start Download")
         self.download_button.setEnabled(False)  # deactivated initially
         self.download_button.clicked.connect(self.start_download)
@@ -330,11 +337,85 @@ class MainWindow(QtWidgets.QMainWindow):
         self.last_hovered_row = -1
 
         # Download queue / concurrency limit
-        self.download_queue = []  # list of (worker, row) not yet started
+        self.download_queue = []
         self.active_download_count = 0
         self._max_concurrent = int(
             config["DownloadOptions"].get("max_concurrent_downloads", "3")
         )
+
+        # ── Clipboard monitoring ──────────────────────────────────────────
+        self._last_clipboard_text = ""
+        self._clipboard = QtWidgets.QApplication.clipboard()
+        self._clipboard_bar = QtWidgets.QWidget()
+        self._clipboard_bar.setVisible(False)
+        clip_layout = QtWidgets.QHBoxLayout(self._clipboard_bar)
+        clip_layout.setContentsMargins(8, 4, 8, 4)
+        self._clipboard_label = QtWidgets.QLabel("")
+        self._clipboard_label.setStyleSheet("color: #90CAF9; font-size: 9pt;")
+        clip_use_btn = QtWidgets.QPushButton("Use URL")
+        clip_use_btn.clicked.connect(self._use_clipboard_url)
+        clip_dismiss_btn = QtWidgets.QPushButton("Dismiss")
+        clip_dismiss_btn.clicked.connect(lambda: self._clipboard_bar.setVisible(False))
+        clip_layout.addWidget(QtWidgets.QLabel("📋"))
+        clip_layout.addWidget(self._clipboard_label, 1)
+        clip_layout.addWidget(clip_use_btn)
+        clip_layout.addWidget(clip_dismiss_btn)
+        main_layout.addWidget(self._clipboard_bar)
+
+        self._clip_timer = QtCore.QTimer(self)
+        self._clip_timer.timeout.connect(self._check_clipboard)
+        self._clip_timer.start(1000)
+
+        # ── System tray for notifications ─────────────────────────────────
+        self._tray = QtWidgets.QSystemTrayIcon(self)
+        self._tray.setIcon(
+            self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_ArrowDown)
+        )
+        self._tray_menu = QtWidgets.QMenu()
+        self._tray_menu.addAction("Show", self.show)
+        self._tray_menu.addAction("Quit", QtWidgets.QApplication.quit)
+        self._tray.setContextMenu(self._tray_menu)
+        self._tray.show()
+
+    # ── Clipboard helpers ────────────────────────────────────────────────
+
+    @staticmethod
+    def _is_valid_url(text: str) -> bool:
+        return text.startswith("http://") or text.startswith("https://")
+
+    @staticmethod
+    def _url_has_playlist(url: str) -> bool:
+        """Return True if the URL contains playlist-like parameters."""
+        import urllib.parse
+
+        try:
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+            # YouTube: list=, SoundCloud: sets/, generic indicators
+            if "list" in qs:
+                return True
+            path = urllib.parse.urlparse(url).path.lower()
+            return any(p in path for p in ["/playlist", "/sets/", "/collection"])
+        except Exception:
+            return False
+
+    def _check_clipboard(self):
+        text = self._clipboard.text().strip()
+        if text == self._last_clipboard_text:
+            return
+        self._last_clipboard_text = text
+        current = self.url_edit.text().strip()
+        if self._is_valid_url(text) and text != current:
+            short = text if len(text) <= 60 else text[:57] + "…"
+            self._clipboard_label.setText(f"Detected URL: {short}")
+            self._clipboard_bar.setVisible(True)
+
+    def _use_clipboard_url(self):
+        text = self._clipboard.text().strip()
+        if self._is_valid_url(text):
+            self.url_edit.setText(text)
+        self._clipboard_bar.setVisible(False)
+
+    # ── Table hover helpers ──────────────────────────────────────────────
 
     def on_table_cell_entered(self, row, col):
         """Called when mouse enters a table cell"""
@@ -424,12 +505,17 @@ class MainWindow(QtWidgets.QMainWindow):
             self.preview_title.setText("")
             self.thumbnail_label.hide()
             self.download_button.setEnabled(False)
+            self.playlist_checkbox.setVisible(False)
             return
 
         if url == self.last_url:
             return
 
         self.last_url = url
+
+        # Hide clipboard suggestion if it matches what was just typed
+        if url == self._last_clipboard_text:
+            self._clipboard_bar.setVisible(False)
 
         # Show loading state
         self.preview_title.setText("Fetching metadata...")
@@ -478,6 +564,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.thumbnail_label.hide()
 
         self.download_button.setEnabled(True)
+
+        # Show playlist option only when the URL contains a playlist indicator
+        url = self.url_edit.text().strip()
+        is_playlist = self._url_has_playlist(url)
+        self.playlist_checkbox.setVisible(is_playlist)
+        if not is_playlist:
+            self.playlist_checkbox.setChecked(False)
 
     def select_folder(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Choose Folder")
@@ -570,6 +663,7 @@ class MainWindow(QtWidgets.QMainWindow):
             config["DownloadOptions"],
             cached_metadata=(self.cached_metadata if self.cached_url == url else None),
             forced_outtmpl=final_fullpath,
+            download_playlist=self.playlist_checkbox.isChecked(),
         )
         row = self.download_table.rowCount()
         self.download_table.insertRow(row)
@@ -731,13 +825,27 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_overall_progress()
         self.active_download_count = max(0, self.active_download_count - 1)
         self._start_next_queued()
+        # System notification
+        title_item = self.download_table.item(row, 0)
+        title_text = title_item.text() if title_item else "Download"
+        if self._tray.isSystemTrayAvailable():
+            self._tray.showMessage(
+                "Download complete ✔",
+                title_text,
+                QtWidgets.QSystemTrayIcon.MessageIcon.Information,
+                4000,
+            )
 
     def download_error(self, row, err):
         item = self.download_table.item(row, 1)
         if item:
-            item.setText(f"✖ Error")
-            item.setForeground(QtGui.QColor("#E74C3C"))
-            item.setToolTip(err)
+            if "cancelled" in err.lower():
+                item.setText("✖ Cancelled")
+                item.setForeground(QtGui.QColor("#E74C3C"))
+            else:
+                item.setText("✖ Error")
+                item.setForeground(QtGui.QColor("#E74C3C"))
+                item.setToolTip(err)
         self.download_progress[row] = 0
         self.update_overall_progress()
         self.active_download_count = max(0, self.active_download_count - 1)
@@ -764,14 +872,35 @@ class MainWindow(QtWidgets.QMainWindow):
         worker = self.active_downloads.get(row)
         if not worker:
             return
+
+        status_item = self.download_table.item(row, 1)
+        status_text = status_item.text().lower() if status_item else ""
+        is_done = "✔" in (status_item.text() if status_item else "")
+        is_error = "✖ error" in status_text
+        is_cancelled = "✖ cancelled" in status_text
+        is_active = not is_done and not is_error and not is_cancelled
+
         menu = QtWidgets.QMenu()
-        if worker._paused:
-            pause_action = menu.addAction("Continue")
-        else:
-            pause_action = menu.addAction("Pause")
-        cancel_action = menu.addAction("Cancel")
+        pause_action = None
+        retry_action = None
+        cancel_action = None
+
+        if is_active:
+            if worker._paused:
+                pause_action = menu.addAction("▶  Continue")
+            else:
+                pause_action = menu.addAction("⏸  Pause")
+            cancel_action = menu.addAction("✖  Cancel")
+
+        if is_error or is_cancelled:
+            retry_action = menu.addAction("↺  Retry")
+
+        if menu.isEmpty():
+            return
+
         action = menu.exec(self.download_table.viewport().mapToGlobal(pos))
-        if action == pause_action:
+
+        if action and action == pause_action:
             if worker._paused:
                 worker.resume()
                 item = self.download_table.item(row, 1)
@@ -784,8 +913,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 if item:
                     item.setText("⏸ Paused")
                     item.setForeground(QtGui.QColor("#F39C12"))
-        elif action == cancel_action:
-            # Remove from queue first (if not yet started)
+
+        elif action and action == cancel_action:
             self.download_queue = [(w, r) for w, r in self.download_queue if r != row]
             worker.cancel()
             item = self.download_table.item(row, 1)
@@ -800,6 +929,66 @@ class MainWindow(QtWidgets.QMainWindow):
                         except Exception:
                             pass
             self.update_overall_progress()
+
+        elif action and action == retry_action:
+            self._retry_download(row, worker)
+
+    def _retry_download(self, row, old_worker):
+        """Create a fresh worker reusing the same parameters and restart in-place."""
+        new_worker = DownloadWorker(
+            old_worker.url,
+            old_worker.folder,
+            old_worker.fmt,
+            old_worker.video_quality,
+            old_worker.audio_bitrate,
+            old_worker.net_config,
+            cached_metadata=old_worker.cached_metadata,
+            forced_outtmpl=old_worker.forced_outtmpl,
+            download_playlist=old_worker.download_playlist,
+        )
+
+        self.active_downloads[row] = new_worker
+        self.download_progress[row] = 0
+
+        # Reset row visuals
+        status_item = self.download_table.item(row, 1)
+        if status_item:
+            status_item.setText("⏳ Waiting")
+            status_item.setForeground(QtGui.QColor("#F1C40F"))
+        bar = self.download_table.cellWidget(row, 2)
+        if bar:
+            bar.setValue(0)
+        for col in (4, 5):
+            item = self.download_table.item(row, col)
+            if item:
+                item.setText("—")
+
+        new_worker.title_signal.connect(
+            lambda t, r=row: self.download_table.item(r, 0).setText(t)
+        )
+        new_worker.progress_signal.connect(
+            lambda p, s, r=row: self.update_download_row(r, p, s)
+        )
+        new_worker.size_signal.connect(
+            lambda s, r=row: self.download_table.item(r, 3).setText(s)
+        )
+        new_worker.stats_signal.connect(
+            lambda spd, eta, r=row: self.update_download_stats(r, spd, eta)
+        )
+        new_worker.finished_signal.connect(lambda r=row: self.download_finished(r))
+        new_worker.error_signal.connect(lambda err, r=row: self.download_error(r, err))
+
+        if self.active_download_count < self._max_concurrent:
+            self.active_download_count += 1
+            new_worker.start()
+        else:
+            self.download_queue.append((new_worker, row))
+            status_item = self.download_table.item(row, 1)
+            if status_item:
+                status_item.setText("⏳ Queued")
+                status_item.setForeground(QtGui.QColor("#95A5A6"))
+
+        self.update_overall_progress()
 
     def closeEvent(self, event):
         """

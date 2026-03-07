@@ -15,7 +15,12 @@ import requests
 import yt_dlp
 from PyQt6 import QtCore, QtGui
 
-from utils import format_filesize, get_videasy_headers, sanitize_filename
+from utils import (
+    format_filesize,
+    friendly_error,
+    get_videasy_headers,
+    sanitize_filename,
+)
 
 
 class YTDLPLogger:
@@ -84,7 +89,9 @@ class YTDLPLogger:
             print(f"[yt-dlp ERROR] {msg}")
 
 
-def build_ydl_opts(fmt, video_quality, audio_bitrate, net_config):
+def build_ydl_opts(
+    fmt, video_quality, audio_bitrate, net_config, download_playlist=False
+):
     """
     Stateless builder for yt-dlp options that mirrors DownloadWorker._build_base_opts logic.
     Returned dict intentionally does not set 'progress_hooks' (caller attaches it) but does set
@@ -108,10 +115,9 @@ def build_ydl_opts(fmt, video_quality, audio_bitrate, net_config):
         "downloader": "ffmpeg",
         "hls_use_mpegts": True,
         "continuedl": True,
-        "noplaylist": True,
+        "noplaylist": not download_playlist,
         "cachedir": False,
         "logger": None,
-        "remote_components": ["ejs:github"],
     }
 
     if fmt in ["mp4 (with Audio)", "avi", "mkv"]:
@@ -333,10 +339,10 @@ class MetadataWorker(QtCore.QThread):
                     ydl_opts_with_headers["http_headers"] = get_videasy_headers()
                     info = _extract(ydl_opts_with_headers)
                 except Exception as e2:
-                    self.error_signal.emit(str(e2))
+                    self.error_signal.emit(friendly_error(str(e2)))
                     return
             else:
-                self.error_signal.emit(str(e))
+                self.error_signal.emit(friendly_error(str(e)))
                 return
 
         title = info.get("title", "")
@@ -376,6 +382,7 @@ class DownloadWorker(QtCore.QThread):
         net_config,
         cached_metadata=None,
         forced_outtmpl=None,
+        download_playlist=False,
         parent=None,
     ):
         super().__init__(parent)
@@ -386,7 +393,8 @@ class DownloadWorker(QtCore.QThread):
         self.audio_bitrate = audio_bitrate
         self.net_config = net_config
         self.cached_metadata = cached_metadata
-        self.forced_outtmpl = forced_outtmpl  # full path to use as outtmpl if provided
+        self.forced_outtmpl = forced_outtmpl
+        self.download_playlist = download_playlist
         self._paused = False
         self._cancelled = False
         self.current_outtmpl = None
@@ -439,7 +447,11 @@ class DownloadWorker(QtCore.QThread):
 
     def _build_base_opts(self):
         ydl_opts = build_ydl_opts(
-            self.fmt, self.video_quality, self.audio_bitrate, self.net_config
+            self.fmt,
+            self.video_quality,
+            self.audio_bitrate,
+            self.net_config,
+            download_playlist=self.download_playlist,
         )
         ydl_opts["progress_hooks"] = [self.progress_hook]
         ydl_opts["logger"] = YTDLPLogger()
@@ -476,7 +488,7 @@ class DownloadWorker(QtCore.QThread):
                 self.title_signal.emit(os.path.basename(out))
                 self.finished_signal.emit()
             except Exception as e:
-                self.error_signal.emit(str(e))
+                self.error_signal.emit(friendly_error(str(e)))
             return  # done – skip all yt-dlp logic below
 
         ydl_opts = self._build_base_opts()
@@ -607,10 +619,10 @@ class DownloadWorker(QtCore.QThread):
                             ydl_opts.pop("postprocessor_args", None)
                         self.size_signal.emit(filesize_str)
                     except Exception as e2:
-                        self.error_signal.emit(str(e2))
+                        self.error_signal.emit(friendly_error(str(e2)))
                         return
                 else:
-                    self.error_signal.emit(str(e))
+                    self.error_signal.emit(friendly_error(str(e)))
                     return
 
         # Now perform download (with possible retry on 403 during download)
@@ -646,4 +658,4 @@ class DownloadWorker(QtCore.QThread):
                             os.remove(fname)
                         except Exception:
                             pass
-            self.error_signal.emit(str(e))
+            self.error_signal.emit(friendly_error(str(e)))
