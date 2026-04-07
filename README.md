@@ -10,7 +10,7 @@ The application provides an easy to use graphical user interface with usefull Co
 You can also use this as a CLI tool (interactive or for scripting). [Learn more](Docs/CLI.md) <br>
 This Tool supports every Site yt-dlp supports + [additional ones](https://github.com/truelockmc/video-downloader/blob/main/README.md#additonally-supported-sites).
 
-## [CLI only Builds](https://github.com/truelockmc/vid-dl-cli-only)
+### [CLI only Builds](https://github.com/truelockmc/vid-dl-cli-only)
 
 ![Look at the UI :)](Docs/screenshots/ui.png)
 
