@@ -10,7 +10,23 @@ import sys
 from gui import main_app
 
 
+def _attach_console():
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    ctypes.windll.kernel32.AllocConsole()
+    # Re-open standard streams to the new console
+    sys.stdout = open("CONOUT$", "w")
+    sys.stderr = open("CONOUT$", "w")
+    sys.stdin = open("CONIN$", "r")
+
+
 def main():
+    # Quick pre-check before full argparse so the console is ready early
+    if any(a in sys.argv for a in ("-c", "--cli")):
+        _attach_console()
+
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
         "--cli", "-c", action="store_true", help="Start interactive CLI mode"
