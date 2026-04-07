@@ -194,6 +194,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cached_metadata = None
         self.last_url = ""
 
+        # Metadata worker tracking (prevents "QThread destroyed while running")
+        self.metadata_worker = None
+        self._meta_generation = 0
+
         # Central widget and layout
         central_widget = QtWidgets.QWidget()
         self.setCentralWidget(central_widget)
@@ -366,6 +370,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._clip_timer.timeout.connect(self._check_clipboard)
         self._clip_timer.start(1000)
 
+        # Debounce timer for metadata fetching (avoids spawning a thread per keystroke)
+        self._meta_debounce = QtCore.QTimer(self)
+        self._meta_debounce.setSingleShot(True)
+        self._meta_debounce.timeout.connect(self._fetch_metadata)
+
         # ── System tray for notifications ─────────────────────────────────
         self._tray = QtWidgets.QSystemTrayIcon(self)
         self._tray.setIcon(
@@ -497,7 +506,7 @@ class MainWindow(QtWidgets.QMainWindow):
         super().mouseleaveEvent(event)
 
     def on_url_changed(self, text):
-        url = self.url_edit.text().strip()
+        url = text.strip()
 
         # Hide error on empty input
         if not url:
@@ -506,6 +515,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.thumbnail_label.hide()
             self.download_button.setEnabled(False)
             self.playlist_checkbox.setVisible(False)
+            self.last_url = ""
+            self._meta_debounce.stop()
             return
 
         if url == self.last_url:
@@ -517,16 +528,40 @@ class MainWindow(QtWidgets.QMainWindow):
         if url == self._last_clipboard_text:
             self._clipboard_bar.setVisible(False)
 
-        # Show loading state
+        # Show loading state immediately, but delay the actual fetch
         self.preview_title.setText("Fetching metadata...")
         self.thumbnail_label.setText("Loading thumbnail...")
         self.thumbnail_label.show()
         self.download_button.setEnabled(False)
 
-        self.metadata_worker = MetadataWorker(url)
-        self.metadata_worker.metadata_signal.connect(self.on_metadata_received)
-        self.metadata_worker.error_signal.connect(self.on_metadata_error)
-        self.metadata_worker.start()
+        self._meta_generation += 1
+        self._meta_debounce.start(600)
+
+    def _fetch_metadata(self):
+        """Actually start metadata worker."""
+        url = self.url_edit.text().strip()
+        if not url:
+            return
+        gen = self._meta_generation
+        worker = MetadataWorker(url)
+        worker.metadata_signal.connect(
+            lambda meta, g=gen: self._on_meta_received_checked(meta, g)
+        )
+        worker.error_signal.connect(
+            lambda err, g=gen: self._on_meta_error_checked(err, g)
+        )
+        self.metadata_worker = worker
+        worker.start()
+
+    def _on_meta_received_checked(self, metadata, gen):
+        if gen != self._meta_generation:
+            return
+        self.on_metadata_received(metadata)
+
+    def _on_meta_error_checked(self, error, gen):
+        if gen != self._meta_generation:
+            return
+        self.on_metadata_error(error)
 
     def on_metadata_error(self, error_message):
         """Handle metadata error from yt-dlp"""
