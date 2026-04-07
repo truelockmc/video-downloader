@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       targets:
-        description: "Build targets (comma-separated: windows, linux, appimage, deb)"
+        description: "Build targets (comma-separated: windows, linux, appimage, deb, mac)"
         required: false
-        default: "windows, linux, appimage, deb"
+        default: "windows, linux, appimage, deb, mac"
 
 jobs:
   # ────────────────────────────────────────────────────────────
@@ -240,3 +240,70 @@ jobs:
         with:
           name: VideoDownloader-deb
           path: "*.deb"
+
+  # ────────────────────────────────────────────────────────────
+  build-mac:
+    name: Build, macOS ${{ matrix.arch }} (.app portable zip)
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: macos-latest # Apple Silicon
+            arch: arm64
+            artifact_suffix: arm64
+          - runner: macos-13 # Intel
+            arch: x86_64
+            artifact_suffix: x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Get current week (for cache rotation)
+        id: date
+        run: echo "week=$(date +'%Y-%V')" >> $GITHUB_OUTPUT
+
+      - name: Cache pip (macOS)
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/pip
+          key: pip-mac-${{ matrix.arch }}-${{ hashFiles('requirements.txt') }}-${{ steps.date.outputs.week }}
+          restore-keys: |
+            pip-mac-${{ matrix.arch }}-${{ hashFiles('requirements.txt') }}-
+            pip-mac-${{ matrix.arch }}-
+
+      - name: Cache PyInstaller (macOS)
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Application Support/pyinstaller
+          key: pyinstaller-mac-${{ matrix.arch }}-py3.12-${{ hashFiles('requirements.txt') }}
+          restore-keys: pyinstaller-mac-${{ matrix.arch }}-py3.12-
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pyinstaller pillow
+
+      # ── PyInstaller build ────────────────────────────────────
+      # --windowed produces a .app bundle inside dist/
+      - name: Build .app bundle
+        run: |
+          python -m PyInstaller \
+            --noconfirm --onedir --windowed --clean --noupx \
+            --icon=icon.png \
+            --exclude-module pycryptodomex.selftest \
+            --exclude-module pycryptodomex.tests \
+            --target-arch ${{ matrix.arch }} \
+            --name "Video Downloader" \
+            main.py
+
+      - name: Zip portable output (ditto)
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            "dist/Video Downloader.app" \
+            "macOS_${{ matrix.artifact_suffix }}-portable.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VideoDownloader-macOS-${{ matrix.artifact_suffix }}
+          path: macOS_${{ matrix.artifact_suffix }}-portable.zip
