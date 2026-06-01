@@ -66,6 +66,222 @@ def parse_ytdlp_args(arg_list: Optional[List[str]]) -> List[str]:
         return [arg_list[0]]
 
 
+def apply_extra_ytdlp_args(ydl_opts: dict, extra_args: List[str]) -> None:
+    """
+    Parse raw yt-dlp CLI arguments (e.g. ['--cookies', 'cookies.txt',
+    '--no-check-certificates']) and merge them into an existing ydl_opts dict.
+
+    Supports:
+      --cookies FILE            -> cookiefile
+      --cookies-from-browser BR -> cookiesfrombrowser
+      --no-check-certificates   -> nocheckcertificate
+      --proxy URL               -> proxy
+      --geo-bypass              -> geo_bypass
+      --user-agent UA           -> user_agent
+      --referer REF             -> referer
+      --add-header K:V          -> http_headers[K] = V
+      --sleep-interval N        -> sleep_interval
+      --max-sleep-interval N    -> max_sleep_interval
+      --rate-limit RATE         -> ratelimit
+      --retries N               -> retries
+      --fragment-retries N      -> fragment_retries
+      --socket-timeout N        -> socket_timeout
+      --source-address IP       -> source_address
+      --force-ipv4              -> source_address (0.0.0.0)
+      --force-ipv6              -> source_address (::)
+      --no-playlist             -> noplaylist = True
+      --yes-playlist            -> noplaylist = False
+      --playlist-start N        -> playliststart
+      --playlist-end N          -> playlistend
+      --playlist-items ITEMS    -> playlist_items
+      --write-subs              -> writesubtitles
+      --sub-langs LANGS         -> subtitleslangs
+      --embed-subs              -> embedsubtitles
+      --write-thumbnail         -> writethumbnail
+      --embed-thumbnail         -> embedthumbnail
+      --write-info-json         -> writeinfojson
+      --username USER           -> username
+      --password PASS           -> password
+      --netrc                   -> usenetrc
+      --netrc-location PATH     -> netrc_location
+      --sponsorblock-remove CAT -> sponsorblock_remove
+      --sponsorblock-mark CAT   -> sponsorblock_mark
+      -o / --output TMPL        -> outtmpl  (already handled but kept for completeness)
+      --verbose / -v            -> verbose
+      --quiet / -q              -> quiet
+
+    Unknown args are printed as a warning but do NOT abort the download.
+    """
+    if not extra_args:
+        return
+
+    # Flags that map directly to a bool key (no value argument)
+    BOOL_FLAGS: dict = {
+        "--no-check-certificates": ("nocheckcertificate", True),
+        "--no-check-certificate": ("nocheckcertificate", True),
+        "--geo-bypass": ("geo_bypass", True),
+        "--no-playlist": ("noplaylist", True),
+        "--yes-playlist": ("noplaylist", False),
+        "--write-subs": ("writesubtitles", True),
+        "--write-sub": ("writesubtitles", True),
+        "--embed-subs": ("embedsubtitles", True),
+        "--embed-sub": ("embedsubtitles", True),
+        "--write-thumbnail": ("writethumbnail", True),
+        "--embed-thumbnail": ("embedthumbnail", True),
+        "--write-info-json": ("writeinfojson", True),
+        "--netrc": ("usenetrc", True),
+        "--force-ipv4": ("source_address", "0.0.0.0"),
+        "--force-ipv6": ("source_address", "::"),
+        "--verbose": ("verbose", True),
+        "-v": ("verbose", True),
+        "--quiet": ("quiet", True),
+        "-q": ("quiet", True),
+    }
+
+    # Args that take exactly one value: flag -> ydl_opts key
+    VALUE_FLAGS: dict = {
+        "--cookies": "cookiefile",
+        "--cookies-from-browser": "cookiesfrombrowser",
+        "--proxy": "proxy",
+        "--user-agent": "user_agent",
+        "--referer": "referer",
+        "--sleep-interval": "sleep_interval",
+        "--max-sleep-interval": "max_sleep_interval",
+        "--min-sleep-interval": "sleep_interval",
+        "--rate-limit": "ratelimit",
+        "--retries": "retries",
+        "--fragment-retries": "fragment_retries",
+        "--socket-timeout": "socket_timeout",
+        "--source-address": "source_address",
+        "--playlist-start": "playliststart",
+        "--playlist-end": "playlistend",
+        "--playlist-items": "playlist_items",
+        "--sub-langs": "subtitleslangs",
+        "--sub-lang": "subtitleslangs",
+        "--username": "username",
+        "-u": "username",
+        "--password": "password",
+        "-p": "password",
+        "--netrc-location": "netrc_location",
+        "--sponsorblock-remove": "sponsorblock_remove",
+        "--sponsorblock-mark": "sponsorblock_mark",
+        "-o": "outtmpl",
+        "--output": "outtmpl",
+    }
+
+    # Integer-cast keys
+    INT_KEYS = {
+        "sleep_interval",
+        "max_sleep_interval",
+        "retries",
+        "fragment_retries",
+        "socket_timeout",
+        "playliststart",
+        "playlistend",
+    }
+
+    i = 0
+    while i < len(extra_args):
+        arg = extra_args[i]
+
+        if arg in BOOL_FLAGS:
+            key, val = BOOL_FLAGS[arg]
+            ydl_opts[key] = val
+            i += 1
+            continue
+
+        if arg in VALUE_FLAGS:
+            key = VALUE_FLAGS[arg]
+            if i + 1 >= len(extra_args):
+                print(f"[yt-dlp-args] Warning: '{arg}' requires a value, ignoring.")
+                i += 1
+                continue
+            val_str = extra_args[i + 1]
+            i += 2
+
+            if key == "ratelimit":
+                # yt-dlp accepts e.g. "500K", "1M"
+                # Try to parse common suffixes
+                try:
+                    val_str_upper = val_str.upper()
+                    if val_str_upper.endswith("K"):
+                        ydl_opts[key] = int(float(val_str_upper[:-1]) * 1024)
+                    elif val_str_upper.endswith("M"):
+                        ydl_opts[key] = int(float(val_str_upper[:-1]) * 1024 * 1024)
+                    elif val_str_upper.endswith("G"):
+                        ydl_opts[key] = int(float(val_str_upper[:-1]) * 1024**3)
+                    else:
+                        ydl_opts[key] = int(val_str)
+                except ValueError:
+                    print(
+                        f"[yt-dlp-args] Warning: could not parse rate-limit '{val_str}', ignoring."
+                    )
+                continue
+
+            if key in INT_KEYS:
+                try:
+                    ydl_opts[key] = int(val_str)
+                except ValueError:
+                    print(
+                        f"[yt-dlp-args] Warning: expected integer for '{arg}', got '{val_str}', ignoring."
+                    )
+                continue
+
+            if key == "subtitleslangs":
+                # Accept comma-separated list
+                ydl_opts[key] = [l.strip() for l in val_str.split(",")]
+                continue
+
+            if key == "cookiesfrombrowser":
+                # yt-dlp accepts "chrome", "firefox+keychain", etc.
+                ydl_opts[key] = (val_str,)
+                continue
+
+            if key == "sponsorblock_remove" or key == "sponsorblock_mark":
+                ydl_opts[key] = [c.strip() for c in val_str.split(",")]
+                continue
+
+            ydl_opts[key] = val_str
+            continue
+
+        # --- --add-header KEY:VALUE ---
+        if arg == "--add-header":
+            if i + 1 >= len(extra_args):
+                print(
+                    "[yt-dlp-args] Warning: '--add-header' requires a value, ignoring."
+                )
+                i += 1
+                continue
+            header_str = extra_args[i + 1]
+            i += 2
+            if ":" not in header_str:
+                print(
+                    f"[yt-dlp-args] Warning: '--add-header' value must be 'Key:Value', got '{header_str}', ignoring."
+                )
+                continue
+            hkey, hval = header_str.split(":", 1)
+            headers = ydl_opts.setdefault("http_headers", {})
+            headers[hkey.strip()] = hval.strip()
+            continue
+
+        # --- unknown / unsupported ---
+        if arg.startswith("-") and not arg.startswith("--") and len(arg) == 2:
+            # single-char flag with value
+            print(
+                f"[yt-dlp-args] Warning: unsupported arg '{arg}' (and its value), passing through is not supported, ignoring."
+            )
+            i += 2
+            continue
+        elif arg.startswith("-"):
+            print(f"[yt-dlp-args] Warning: unsupported arg '{arg}', ignoring.")
+            i += 1
+            continue
+        else:
+            # positional
+            i += 1
+            continue
+
+
 def ask_choice(prompt: str, choices: List[str]) -> Optional[str]:
     while True:
         print(prompt)
@@ -156,7 +372,17 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         "--ytdlp-args",
         "-a",
         nargs="*",
-        help="Raw yt-dlp args (single quoted string or multiple args)",
+        help=(
+            "Pass raw yt-dlp arguments as a quoted string or space-separated tokens. "
+            "Example: --ytdlp-args '--cookies cookies.txt --proxy socks5://127.0.0.1:1080'. "
+            "Supported: --cookies, --cookies-from-browser, --proxy, --user-agent, --referer, "
+            "--add-header, --no-check-certificates, --geo-bypass, --rate-limit, --retries, "
+            "--fragment-retries, --socket-timeout, --force-ipv4, --force-ipv6, "
+            "--no-playlist, --yes-playlist, --playlist-start, --playlist-end, --playlist-items, "
+            "--write-subs, --sub-langs, --embed-subs, --write-thumbnail, --embed-thumbnail, "
+            "--write-info-json, --username, --password, --netrc, --sponsorblock-remove, "
+            "-o/--output, --verbose, --quiet."
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -206,11 +432,9 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     ydl_opts["progress_hooks"] = [make_progress_hook(cli_logger)]
     ydl_opts["logger"] = cli_logger
 
-    # Naive passthrough for -o/--output from extra args
+    # Apply all extra yt-dlp args (--cookies, --proxy, --add-header, -o, ...)
     if extra_ytdlp:
-        for i, a in enumerate(extra_ytdlp):
-            if a in ("-o", "--output") and i + 1 < len(extra_ytdlp):
-                ydl_opts["outtmpl"] = extra_ytdlp[i + 1]
+        apply_extra_ytdlp_args(ydl_opts, extra_ytdlp)
 
     if final_fullpath:
         ydl_opts["outtmpl"] = final_fullpath

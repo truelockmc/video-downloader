@@ -1,3 +1,5 @@
 
 download_config.ini
 *.pyc
+*.zip
+temp.py
