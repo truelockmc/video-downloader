@@ -3,6 +3,10 @@ name: Build Binaries
 on:
   workflow_dispatch:
     inputs:
+      version:
+        description: "Version string (e.g. 2.2.1)"
+        required: true
+        default: "0.0.0"
       targets:
         description: "Build targets (comma-separated: windows, linux, appimage, deb, mac)"
         required: false
@@ -175,6 +179,7 @@ jobs:
           Icon=video-downloader
           Type=Application
           Categories=AudioVideo;Network;
+          X-AppImage-Version=${{ github.event.inputs.version }}
           EOF
 
           cat > "$APPDIR/AppRun" <<'EOF'
@@ -187,12 +192,12 @@ jobs:
           cp "$APPDIR/usr/share/applications/video-downloader.desktop" "$APPDIR/video-downloader.desktop"
 
       - name: Build AppImage
-        run: ARCH=x86_64 appimagetool AppDir VideoDownloader-x86_64.AppImage
+        run: ARCH=x86_64 appimagetool AppDir VideoDownloader-x86_64-${{ github.event.inputs.version }}.AppImage
 
       - uses: actions/upload-artifact@v4
         with:
           name: VideoDownloader-AppImage
-          path: VideoDownloader-x86_64.AppImage
+          path: VideoDownloader-x86_64-${{ github.event.inputs.version }}.AppImage
 
       # ── 3. .deb ─────────────────────────────────────────────
       - name: Create .deb package
@@ -227,7 +232,7 @@ jobs:
 
           cat > "$PKG/DEBIAN/control" <<EOF
           Package: video-downloader
-          Version: 2.2.0
+          Version: ${{ github.event.inputs.version }}
           Architecture: amd64
           Maintainer: truelockmc
           Description: GUI & CLI video downloader powered by yt-dlp
