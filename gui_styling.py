@@ -1,5 +1,35 @@
 #!/usr/bin/env python3
+from PyQt6 import QtCore, QtGui, QtWidgets
+
+
 def modern_stylesheet(app):
+    # Fusion style overrides native Windows rendering so all QSS rules apply consistently
+    app.setStyle("Fusion")
+
+    # Dark base palette
+    palette = QtGui.QPalette()
+    dark = QtGui.QColor("#1a1a1a")
+    darker = QtGui.QColor("#111111")
+    text = QtGui.QColor("#d0d0d0")
+    highlight = QtGui.QColor("#0D47A1")
+
+    palette.setColor(QtGui.QPalette.ColorRole.Window, dark)
+    palette.setColor(QtGui.QPalette.ColorRole.WindowText, text)
+    palette.setColor(QtGui.QPalette.ColorRole.Base, darker)
+    palette.setColor(QtGui.QPalette.ColorRole.AlternateBase, dark)
+    palette.setColor(QtGui.QPalette.ColorRole.ToolTipBase, darker)
+    palette.setColor(QtGui.QPalette.ColorRole.ToolTipText, text)
+    palette.setColor(QtGui.QPalette.ColorRole.Text, text)
+    palette.setColor(QtGui.QPalette.ColorRole.Button, dark)
+    palette.setColor(QtGui.QPalette.ColorRole.ButtonText, text)
+    palette.setColor(QtGui.QPalette.ColorRole.BrightText, QtGui.QColor("#ffffff"))
+    palette.setColor(QtGui.QPalette.ColorRole.Highlight, highlight)
+    palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor("#ffffff"))
+    palette.setColor(QtGui.QPalette.ColorRole.Link, QtGui.QColor("#1976D2"))
+    palette.setColor(QtGui.QPalette.ColorRole.Mid, QtGui.QColor("#222222"))
+    palette.setColor(QtGui.QPalette.ColorRole.Dark, QtGui.QColor("#0a0a0a"))
+    app.setPalette(palette)
+
     stylesheet = """
     /* Main Font Settings */
     * {
@@ -232,6 +262,77 @@ def modern_stylesheet(app):
     QScrollBar::add-line:horizontal,
     QScrollBar::sub-line:horizontal {
         width: 0px;
+    }
+
+    /* Main window and generic widgets to prevent white background on Windows */
+    QMainWindow, QWidget {
+        background-color: #1a1a1a;
+        color: #d0d0d0;
+    }
+
+    /* CheckBox */
+    QCheckBox {
+        color: #d0d0d0;
+        spacing: 6px;
+    }
+
+    QCheckBox::indicator {
+        width: 16px;
+        height: 16px;
+        border: 2px solid #444;
+        border-radius: 4px;
+        background-color: #1a1a1a;
+    }
+
+    QCheckBox::indicator:checked {
+        background-color: #0D47A1;
+        border-color: #0D47A1;
+    }
+
+    QCheckBox::indicator:hover {
+        border-color: #1976D2;
+    }
+
+    /* ProgressBar */
+    QProgressBar {
+        border: none;
+        border-radius: 4px;
+        background-color: #2a2a2a;
+        color: transparent;
+        height: 6px;
+    }
+
+    QProgressBar::chunk {
+        background-color: #0D47A1;
+        border-radius: 4px;
+    }
+
+    /* Menu / Context Menu */
+    QMenu {
+        background-color: #1a1a1a;
+        color: #d0d0d0;
+        border: 1px solid #333;
+        border-radius: 4px;
+    }
+
+    QMenu::item:selected {
+        background-color: #0D47A1;
+        color: #ffffff;
+    }
+
+    QMenu::separator {
+        height: 1px;
+        background: #333;
+        margin: 4px 8px;
+    }
+
+    /* ToolTip */
+    QToolTip {
+        background-color: #111;
+        color: #d0d0d0;
+        border: 1px solid #333;
+        border-radius: 4px;
+        padding: 4px 8px;
     }
     """
     app.setStyleSheet(stylesheet)
