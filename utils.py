@@ -374,13 +374,24 @@ def friendly_error(raw: str) -> str:
 
 def get_videasy_headers():
     """
-    The special headers that are needed for Videasy.
-    These are only used if needed (Retry after 403).
+    Headers that mirror what the browser sends for Videasy-hosted streams.
+    The User-Agent must be explicitly included: yt-dlp passes http_headers
+    to ffmpeg via -headers, but the impersonate UA is NOT automatically
+    forwarded to ffmpeg segment downloads .
     """
     return {
-        "User-Agent": "Mozilla/5.0",
-        "Origin": "https://player.videasy.net",
-        "Referer": "https://player.videasy.net/",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/136.0.0.0 Safari/537.36"
+        ),
+        "Origin": "https://player.videasy.to",
+        "Referer": "https://player.videasy.to/",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "cross-site",
+        "DNT": "1",
+        "Accept-Language": "en-US,en;q=0.9",
     }
 
 
