@@ -11,8 +11,8 @@ import shutil
 import sys
 import time
 
-import requests
 import yt_dlp
+from curl_cffi import requests
 from PyQt6 import QtCore, QtGui
 
 from utils import (
@@ -21,6 +21,10 @@ from utils import (
     get_videasy_headers,
     sanitize_filename,
 )
+
+# Impersonation target used for our own HTTP requests (thumbnails, direct downloads).
+# curl_cffi handles the TLS fingerprinting so Cloudflare doesn't block us.
+_CF_IMPERSONATE = "chrome136"
 
 
 class YTDLPLogger:
@@ -102,9 +106,9 @@ def build_ydl_opts(
     Returned dict intentionally does not set 'progress_hooks' (caller attaches it) but does set
     format/merge/postprocessor options.
 
-    deno_path: full path to a Deno executable.  When provided, yt-dlp's extractor_args
-               will instruct the YouTube extractor to use Deno for JS evaluation,
-               enabling access to all available formats (including premium/high-res ones).
+    deno_path: full path to a Deno executable. When provided, yt-dlp's js_runtimes option
+               is set so Deno is used for signature/nsig solving, unlocking all YouTube formats.
+               Without it yt-dlp still works but may miss some formats on YouTube.
     """
     ydl_opts = {
         "abort_on_error": False,
@@ -127,18 +131,24 @@ def build_ydl_opts(
         "noplaylist": not download_playlist,
         "cachedir": False,
         "logger": None,
+        # Tell the generic extractor to impersonate a browser when it hits a
+        # Cloudflare anti-bot 403. Equivalent to --extractor-args "generic:impersonate".
+        # Only affects the generic extractor; YouTube and others are not impacted.
+        "extractor_args": {
+            "generic": {"impersonate": ["chrome136"]},
+        },
+        # Enable Deno as JS runtime (searches PATH by default).
+        # yt-dlp needs this for YouTube signature/nsig solving to get all formats.
+        # If a specific path is configured it will be set below.
+        "js_runtimes": {"deno": {}},
+        # Allow yt-dlp to fetch the EJS challenge-solver script from GitHub.
+        # Without this Deno finds no solver script and signature solving fails.
+        "remote_components": ["ejs:github"],
     }
 
-    # If a valid Deno executable is configured, tell yt-dlp's YouTube extractor
-    # to use it for JS evaluation.  This unlocks format selection that requires
-    # running the YouTube player JavaScript (e.g. nsig decryption, format manifests).
+    # If a specific Deno binary is configured, tell yt-dlp exactly where it is.
     if deno_path and os.path.isfile(deno_path):
-        ydl_opts["extractor_args"] = {
-            "youtube": {
-                "player_client": ["web", "android"],
-                "js_interpreter": [f"deno:{deno_path}"],
-            }
-        }
+        ydl_opts["js_runtimes"] = {"deno": {"path": deno_path}}
 
     if fmt in ["mp4 (with Audio)", "avi", "mkv"]:
         if video_quality == "best":
@@ -236,7 +246,9 @@ def _download_direct(url, folder, progress_cb=None, size_cb=None, cancelled_cb=N
     import urllib.parse
 
     # --- resolve final URL (follow redirects with HEAD) ---
-    head = requests.head(url, allow_redirects=True, timeout=15)
+    head = requests.head(
+        url, allow_redirects=True, timeout=15, impersonate=_CF_IMPERSONATE
+    )
     final_url = head.url
 
     # --- determine output filename ---
@@ -331,13 +343,20 @@ class MetadataWorker(QtCore.QThread):
         self.url = url
 
     def run(self):
-        # Base Options
         ydl_opts = {
             "skip_download": True,
             "cachedir": False,
             "logger": YTDLPLogger(),
             "quiet": True,
             "no_warnings": True,
+            # Bypass Cloudflare anti-bot on generic (non-YouTube) URLs.
+            "extractor_args": {
+                "generic": {"impersonate": ["chrome136"]},
+            },
+            # Enable Deno for YouTube JS solving (searches PATH).
+            "js_runtimes": {"deno": {}},
+            # Allow fetching the EJS challenge-solver script from GitHub.
+            "remote_components": ["ejs:github"],
         }
 
         def _extract(opts):
@@ -368,7 +387,9 @@ class MetadataWorker(QtCore.QThread):
         pixmap = None
         if thumb_url:
             try:
-                response = requests.get(thumb_url, timeout=1.2)
+                response = requests.get(
+                    thumb_url, timeout=1.2, impersonate=_CF_IMPERSONATE
+                )
                 image_data = response.content
                 image = QtGui.QImage()
                 image.loadFromData(image_data)

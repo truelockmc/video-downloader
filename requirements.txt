@@ -1,4 +1,4 @@
-requests
+curl-cffi>=0.15.0
 yt-dlp
 PyQt6
 pycryptodomex #for hls downloads

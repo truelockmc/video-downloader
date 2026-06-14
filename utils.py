@@ -17,7 +17,7 @@ import time
 import urllib.request
 import zipfile
 
-import requests
+from curl_cffi import requests
 from PyQt6 import QtWidgets
 
 CONFIG_FILE = "download_config.ini"
@@ -234,7 +234,9 @@ def install_ffmpeg():
 def network_speed_test():
     try:
         start_time = time.time()
-        response = requests.get(TEST_URL, stream=True, timeout=10)
+        response = requests.get(
+            TEST_URL, stream=True, timeout=10, impersonate="chrome136"
+        )
         total = 0
         chunk_size = 1024 * 1024  # 1 MB
         for chunk in response.iter_content(chunk_size=chunk_size):
