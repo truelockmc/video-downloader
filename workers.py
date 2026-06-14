@@ -47,7 +47,7 @@ class YTDLPLogger:
         if self._is_progress(msg):
             parts = [p for p in msg.split("\r") if p != ""]
             current = parts[-1] if parts else msg
-            # ensure we don't output a trailing newline — use '\r' to overwrite same line
+            # ensure we don't output a trailing newline, use '\r' to overwrite same line
             out = current.rstrip("\n")
             if not out.endswith("\r"):
                 out = out + "\r"
@@ -90,12 +90,21 @@ class YTDLPLogger:
 
 
 def build_ydl_opts(
-    fmt, video_quality, audio_bitrate, net_config, download_playlist=False
+    fmt,
+    video_quality,
+    audio_bitrate,
+    net_config,
+    download_playlist=False,
+    deno_path: str = "",
 ):
     """
     Stateless builder for yt-dlp options that mirrors DownloadWorker._build_base_opts logic.
     Returned dict intentionally does not set 'progress_hooks' (caller attaches it) but does set
     format/merge/postprocessor options.
+
+    deno_path: full path to a Deno executable.  When provided, yt-dlp's extractor_args
+               will instruct the YouTube extractor to use Deno for JS evaluation,
+               enabling access to all available formats (including premium/high-res ones).
     """
     ydl_opts = {
         "abort_on_error": False,
@@ -119,6 +128,17 @@ def build_ydl_opts(
         "cachedir": False,
         "logger": None,
     }
+
+    # If a valid Deno executable is configured, tell yt-dlp's YouTube extractor
+    # to use it for JS evaluation.  This unlocks format selection that requires
+    # running the YouTube player JavaScript (e.g. nsig decryption, format manifests).
+    if deno_path and os.path.isfile(deno_path):
+        ydl_opts["extractor_args"] = {
+            "youtube": {
+                "player_client": ["web", "android"],
+                "js_interpreter": [f"deno:{deno_path}"],
+            }
+        }
 
     if fmt in ["mp4 (with Audio)", "avi", "mkv"]:
         if video_quality == "best":
@@ -210,10 +230,6 @@ def _download_direct(url, folder, progress_cb=None, size_cb=None, cancelled_cb=N
     extension, causing its internal safety check to abort.  We bypass yt-dlp entirely:
       1. HEAD the URL to get the Content-Disposition filename (if available).
       2. Run ffmpeg -i <url> -c copy output.mp4, parsing stderr for progress updates.
-
-    progress_cb(percent: float, status: str) — called on every ffmpeg progress line
-    size_cb(size_str: str)                   — called with human-readable download size
-    Returns the output path on success, raises on failure.
     """
     import re
     import subprocess
@@ -383,6 +399,7 @@ class DownloadWorker(QtCore.QThread):
         cached_metadata=None,
         forced_outtmpl=None,
         download_playlist=False,
+        deno_path: str = "",
         parent=None,
     ):
         super().__init__(parent)
@@ -395,6 +412,7 @@ class DownloadWorker(QtCore.QThread):
         self.cached_metadata = cached_metadata
         self.forced_outtmpl = forced_outtmpl
         self.download_playlist = download_playlist
+        self.deno_path = deno_path
         self._paused = False
         self._cancelled = False
         self.current_outtmpl = None
@@ -414,7 +432,7 @@ class DownloadWorker(QtCore.QThread):
             # Speed
             speed = d.get("speed")
             if speed is None:
-                speed_str = "—"
+                speed_str = "-"
             elif speed >= 1024 * 1024:
                 speed_str = f"{speed / 1024 / 1024:.1f} MB/s"
             else:
@@ -423,7 +441,7 @@ class DownloadWorker(QtCore.QThread):
             # ETA
             eta = d.get("eta")
             if eta is None:
-                eta_str = "—"
+                eta_str = "-"
             elif eta >= 3600:
                 eta_str = f"{eta // 3600}h {(eta % 3600) // 60}m"
             elif eta >= 60:
@@ -434,7 +452,7 @@ class DownloadWorker(QtCore.QThread):
             self.stats_signal.emit(speed_str, eta_str)
         elif d.get("status") == "finished":
             self.progress_signal.emit(100, "Finished")
-            self.stats_signal.emit("—", "—")
+            self.stats_signal.emit("-", "-")
 
     def pause(self):
         self._paused = True
@@ -452,6 +470,7 @@ class DownloadWorker(QtCore.QThread):
             self.audio_bitrate,
             self.net_config,
             download_playlist=self.download_playlist,
+            deno_path=self.deno_path,
         )
         ydl_opts["progress_hooks"] = [self.progress_hook]
         ydl_opts["logger"] = YTDLPLogger()

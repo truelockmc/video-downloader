@@ -397,6 +397,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     config = load_or_create_config()
     net_config = config["DownloadOptions"]
     folder = args.folder or net_config.get("download_folder") or os.path.expanduser("~")
+    deno_path = net_config.get("deno_path", "").strip()
 
     extra_ytdlp = parse_ytdlp_args(args.ytdlp_args)
     resolution = args.resolution
@@ -426,7 +427,11 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         final_fullpath = unique_filename(folder, base_name, default_ext)
 
     ydl_opts = build_ydl_opts(
-        fmt or "mp4 (with Audio)", resolution, bitrate, net_config
+        fmt or "mp4 (with Audio)",
+        resolution,
+        bitrate,
+        net_config,
+        deno_path=deno_path,
     )
     cli_logger = CLILogger()
     ydl_opts["progress_hooks"] = [make_progress_hook(cli_logger)]

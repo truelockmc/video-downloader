@@ -17,11 +17,15 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 from gui_styling import modern_stylesheet
 from utils import (
     CONFIG_FILE,
+    check_deno,
     check_ffmpeg,
+    download_deno,
+    find_deno_in_path,
     friendly_error,
     install_ffmpeg,
     load_or_create_config,
     sanitize_filename,
+    save_deno_path,
     unique_filename,
 )
 from workers import DownloadWorker, MetadataWorker
@@ -699,6 +703,7 @@ class MainWindow(QtWidgets.QMainWindow):
             cached_metadata=(self.cached_metadata if self.cached_url == url else None),
             forced_outtmpl=final_fullpath,
             download_playlist=self.playlist_checkbox.isChecked(),
+            deno_path=config["DownloadOptions"].get("deno_path", ""),
         )
         row = self.download_table.rowCount()
         self.download_table.insertRow(row)
@@ -744,13 +749,13 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.download_table.setItem(row, 3, size_item)
         # Col 4 – Speed
-        speed_item = self._make_table_item("—")
+        speed_item = self._make_table_item("-")
         speed_item.setTextAlignment(
             QtCore.Qt.AlignmentFlag.AlignCenter | QtCore.Qt.AlignmentFlag.AlignVCenter
         )
         self.download_table.setItem(row, 4, speed_item)
         # Col 5 – ETA
-        eta_item = self._make_table_item("—")
+        eta_item = self._make_table_item("-")
         eta_item.setTextAlignment(
             QtCore.Qt.AlignmentFlag.AlignCenter | QtCore.Qt.AlignmentFlag.AlignVCenter
         )
@@ -980,6 +985,7 @@ class MainWindow(QtWidgets.QMainWindow):
             cached_metadata=old_worker.cached_metadata,
             forced_outtmpl=old_worker.forced_outtmpl,
             download_playlist=old_worker.download_playlist,
+            deno_path=getattr(old_worker, "deno_path", ""),
         )
 
         self.active_downloads[row] = new_worker
@@ -996,7 +1002,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for col in (4, 5):
             item = self.download_table.item(row, col)
             if item:
-                item.setText("—")
+                item.setText("-")
 
         new_worker.title_signal.connect(
             lambda t, r=row: self.download_table.item(r, 0).setText(t)
@@ -1080,6 +1086,121 @@ class MainWindow(QtWidgets.QMainWindow):
         event.accept()
 
 
+def check_deno_at_startup(app_config):
+    """
+    Verify that a valid Deno runtime is configured.
+
+    - If the config already points to a working Deno binary → silent pass.
+    - Otherwise → show an informational dialog that explains why Deno is needed,
+      then offer three choices:
+        1. Download automatically (placed next to this script).
+        2. Browse for an existing executable manually.
+        3. Continue without Deno (YouTube format selection will be limited).
+    Updates the config in place and persists the choice.
+    """
+    if check_deno(app_config):
+        return  # Already configured and working
+
+    # Build the prompt dialog
+    msg = QtWidgets.QMessageBox()
+    msg.setWindowTitle("Deno Runtime Not Found")
+    msg.setIcon(QtWidgets.QMessageBox.Icon.Information)
+    msg.setText("<b>Deno runtime is not configured or could not be found.</b>")
+    msg.setInformativeText(
+        "Deno is now required for certain features, including fetching all available "
+        "formats from YouTube. Without it, yt-dlp may fall back to a reduced set of "
+        "quality options for YouTube downloads.\n\n"
+        "What would you like to do?"
+    )
+
+    download_btn = msg.addButton(
+        "Download Deno automatically", QtWidgets.QMessageBox.ButtonRole.AcceptRole
+    )
+    browse_btn = msg.addButton(
+        "Browse for existing Deno…", QtWidgets.QMessageBox.ButtonRole.ActionRole
+    )
+    skip_btn = msg.addButton(
+        "Continue without Deno", QtWidgets.QMessageBox.ButtonRole.RejectRole
+    )
+    msg.setDefaultButton(download_btn)
+    msg.exec()
+
+    clicked = msg.clickedButton()
+
+    if clicked == download_btn:
+        # --- Check if a valid Deno binary already exists next to this script ---
+        target_dir = os.path.dirname(os.path.abspath(__file__))
+        exe_name = "deno.exe" if sys.platform == "win32" else "deno"
+        local_deno = os.path.join(target_dir, exe_name)
+
+        from utils import _is_valid_deno_executable
+
+        if _is_valid_deno_executable(local_deno):
+            save_deno_path(app_config, local_deno)
+            QtWidgets.QMessageBox.information(
+                None,
+                "Deno Found",
+                f"An existing Deno binary was found next to the application:\n{local_deno}\n\n"
+                "The path has been saved to your configuration.",
+            )
+        else:
+            # --- Download Deno next to this script ---
+            progress = QtWidgets.QProgressDialog(
+                "Downloading Deno runtime…", "Cancel", 0, 0
+            )
+            progress.setWindowTitle("Downloading Deno")
+            progress.setMinimumDuration(0)
+            progress.setWindowModality(QtCore.Qt.WindowModality.ApplicationModal)
+            progress.show()
+            QtWidgets.QApplication.processEvents()
+
+            try:
+                deno_path = download_deno(target_dir=target_dir)
+                progress.close()
+                save_deno_path(app_config, deno_path)
+                QtWidgets.QMessageBox.information(
+                    None,
+                    "Deno Ready",
+                    f"Deno was downloaded successfully:\n{deno_path}\n\n"
+                    "The path has been saved to your configuration.",
+                )
+            except Exception as exc:
+                progress.close()
+                QtWidgets.QMessageBox.warning(
+                    None,
+                    "Download Failed",
+                    f"Could not download Deno automatically:\n{exc}\n\n"
+                    "You can try browsing for an existing installation or continue without Deno.",
+                )
+
+    elif clicked == browse_btn:
+        # --- Let the user point to an existing binary ---
+        exe_filter = "Deno Executable (deno deno.exe);;All Files (*)"
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            None, "Select Deno Executable", "", exe_filter
+        )
+        if path:
+            from utils import _is_valid_deno_executable
+
+            if _is_valid_deno_executable(path):
+                save_deno_path(app_config, path)
+                QtWidgets.QMessageBox.information(
+                    None,
+                    "Deno Configured",
+                    f"Deno path saved:\n{path}",
+                )
+            else:
+                QtWidgets.QMessageBox.warning(
+                    None,
+                    "Invalid Executable",
+                    "The selected file does not appear to be a working Deno binary.\n"
+                    "Continuing without Deno.",
+                )
+        # else: user cancelled the file dialog → continue without Deno
+
+    # else: skip_btn
+
+
 def main_app():
     app = QtWidgets.QApplication(sys.argv)
     if not check_ffmpeg():
@@ -1094,6 +1215,10 @@ def main_app():
             install_ffmpeg()
         else:
             sys.exit(1)
+
+    # Check for a valid Deno runtime; prompt the user if missing.
+    check_deno_at_startup(config)
+
     modern_stylesheet(app)
     window = MainWindow()
     sigint_received = False

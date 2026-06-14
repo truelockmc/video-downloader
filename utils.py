@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Helper Functions: ffmpeg-check/install, network speed test, config,
-Videasy-Header builder and cleanup helper.
+Helper Functions: ffmpeg-check/install, deno-check/download, network speed test,
+config, Videasy-Header builder and cleanup helper.
 """
 
 import configparser
@@ -10,9 +10,12 @@ import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
+import urllib.request
+import zipfile
 
 import requests
 from PyQt6 import QtWidgets
@@ -21,6 +24,121 @@ CONFIG_FILE = "download_config.ini"
 TEST_URL = (
     "https://ipv4.download.thinkbroadband.com/1MB.zip"  # 1MB test file for speed test
 )
+
+# ---------------------------------------------------------------------------
+# Deno helpers
+# ---------------------------------------------------------------------------
+
+_DENO_VERSION = "2.3.3"  # pinned; bump here to upgrade
+
+
+def _deno_asset_url() -> tuple[str, str]:
+    """Return (download_url, archive_name) for the current OS/arch."""
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+
+    if system == "windows":
+        if machine in ("arm64", "aarch64"):
+            archive = "deno-aarch64-pc-windows-msvc.zip"
+        else:
+            archive = "deno-x86_64-pc-windows-msvc.zip"
+    elif system == "darwin":
+        if machine in ("arm64", "aarch64"):
+            archive = "deno-aarch64-apple-darwin.zip"
+        else:
+            archive = "deno-x86_64-apple-darwin.zip"
+    else:  # Linux
+        if machine in ("arm64", "aarch64"):
+            archive = "deno-aarch64-unknown-linux-gnu.zip"
+        else:
+            archive = "deno-x86_64-unknown-linux-gnu.zip"
+
+    url = (
+        f"https://github.com/denoland/deno/releases/download/v{_DENO_VERSION}/{archive}"
+    )
+    return url, archive
+
+
+def _deno_exe_name() -> str:
+    return "deno.exe" if platform.system().lower() == "windows" else "deno"
+
+
+def _is_valid_deno_executable(path: str) -> bool:
+    """Return True if *path* points to a working Deno binary for this OS/arch."""
+    if not path:
+        return False
+    if not os.path.isfile(path):
+        return False
+    if not os.access(path, os.X_OK):
+        return False
+    try:
+        result = subprocess.run(
+            [path, "--version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=8,
+        )
+        return result.returncode == 0 and b"deno" in result.stdout.lower()
+    except Exception:
+        return False
+
+
+def get_deno_path(config: "configparser.ConfigParser") -> str:
+    """Return the configured deno path (may be empty/invalid)."""
+    return config.get("DownloadOptions", "deno_path", fallback="").strip()
+
+
+def check_deno(config: "configparser.ConfigParser") -> bool:
+    """Return True if a valid Deno executable is configured."""
+    return _is_valid_deno_executable(get_deno_path(config))
+
+
+def find_deno_in_path() -> str:
+    """Return path to 'deno' if it's already on PATH, else empty string."""
+    found = shutil.which("deno")
+    return found if found and _is_valid_deno_executable(found) else ""
+
+
+def download_deno(target_dir: str | None = None) -> str:
+    """
+    Download the Deno binary for the current platform into *target_dir*
+    (defaults to the directory of this script).
+    Returns the full path to the extracted executable.
+    Raises on failure.
+    """
+    if target_dir is None:
+        target_dir = os.path.dirname(os.path.abspath(__file__))
+
+    url, archive_name = _deno_asset_url()
+    archive_path = os.path.join(target_dir, archive_name)
+
+    print(f"[deno] Downloading {url} …")
+    urllib.request.urlretrieve(url, archive_path)
+
+    print(f"[deno] Extracting {archive_name} …")
+    with zipfile.ZipFile(archive_path, "r") as zf:
+        zf.extractall(target_dir)
+    os.remove(archive_path)
+
+    exe_path = os.path.join(target_dir, _deno_exe_name())
+    if not os.path.isfile(exe_path):
+        raise FileNotFoundError(
+            f"Expected Deno executable not found after extraction: {exe_path}"
+        )
+
+    # Ensure executable bit is set on POSIX
+    if platform.system().lower() != "windows":
+        current = os.stat(exe_path).st_mode
+        os.chmod(exe_path, current | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    return exe_path
+
+
+def save_deno_path(config: "configparser.ConfigParser", path: str) -> None:
+    """Persist *path* as 'deno_path' in the config file."""
+    config["DownloadOptions"]["deno_path"] = path
+    with open(CONFIG_FILE, "w") as f:
+        config.write(f)
 
 
 def check_ffmpeg():
@@ -136,6 +254,11 @@ def load_or_create_config():
     if os.path.exists(CONFIG_FILE):
         config.read(CONFIG_FILE)
         if "DownloadOptions" in config:
+            # Backfill deno_path key if missing (upgrading from older config)
+            if "deno_path" not in config["DownloadOptions"]:
+                config["DownloadOptions"]["deno_path"] = find_deno_in_path()
+                with open(CONFIG_FILE, "w") as f:
+                    config.write(f)
             return config
     speed = network_speed_test()
     if speed >= 5:
@@ -155,6 +278,7 @@ def load_or_create_config():
         "http_chunk_size": http_chunk_size,
         "download_folder": os.path.expanduser("~"),
         "max_concurrent_downloads": max_concurrent,
+        "deno_path": find_deno_in_path(),
     }
     with open(CONFIG_FILE, "w") as configfile:
         config.write(configfile)

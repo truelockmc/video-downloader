@@ -5,3 +5,4 @@ download_config.ini
 temp.py
 dist/
 build/
+deno
