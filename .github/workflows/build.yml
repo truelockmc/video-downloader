@@ -247,8 +247,10 @@ jobs:
           path: "*.deb"
 
   # ────────────────────────────────────────────────────────────
-  build-mac:
-    name: Build, macOS universal (.app portable zip)
+  # curl_cffi ships only single-arch wheels on PyPI (no universal2 fat binary),
+  # so we build two separate .app bundles instead of one universal2 binary.
+  build-mac-arm64:
+    name: Build, macOS Apple Silicon (arm64)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -261,35 +263,33 @@ jobs:
         id: date
         run: echo "week=$(date +'%Y-%V')" >> $GITHUB_OUTPUT
 
-      - name: Cache pip (macOS)
+      - name: Cache pip (macOS arm64)
         uses: actions/cache@v4
         with:
           path: ~/Library/Caches/pip
-          key: pip-mac-${{ hashFiles('requirements.txt') }}-${{ steps.date.outputs.week }}
+          key: pip-mac-arm64-${{ hashFiles('requirements.txt') }}-${{ steps.date.outputs.week }}
           restore-keys: |
-            pip-mac-${{ hashFiles('requirements.txt') }}-
-            pip-mac-
+            pip-mac-arm64-${{ hashFiles('requirements.txt') }}-
+            pip-mac-arm64-
 
-      - name: Cache PyInstaller (macOS)
+      - name: Cache PyInstaller (macOS arm64)
         uses: actions/cache@v4
         with:
           path: ~/Library/Application Support/pyinstaller
-          key: pyinstaller-mac-universal2-py3.12-${{ hashFiles('requirements.txt') }}
-          restore-keys: pyinstaller-mac-universal2-py3.12-
+          key: pyinstaller-mac-arm64-py3.12-${{ hashFiles('requirements.txt') }}
+          restore-keys: pyinstaller-mac-arm64-py3.12-
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt pyinstaller pillow
 
-      # ── PyInstaller build ────────────────────────────────────
-      # universal2 = single .app that runs natively on both Apple Silicon and Intel
-      - name: Build .app bundle (universal2)
+      - name: Build .app bundle (arm64)
         run: |
           python -m PyInstaller \
             --noconfirm --onedir --windowed --clean --noupx \
             --icon=icon.png \
             --exclude-module pycryptodomex.selftest \
             --exclude-module pycryptodomex.tests \
-            --target-arch universal2 \
+            --target-arch arm64 \
             --name "Video Downloader" \
             main.py
 
@@ -297,9 +297,65 @@ jobs:
         run: |
           ditto -c -k --sequesterRsrc --keepParent \
             "dist/Video Downloader.app" \
-            "macOS_universal2-portable.zip"
+            "macOS_arm64-portable.zip"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: VideoDownloader-macOS
-          path: macOS_universal2-portable.zip
+          name: VideoDownloader-macOS-arm64
+          path: macOS_arm64-portable.zip
+
+  # ────────────────────────────────────────────────────────────
+  build-mac-x86_64:
+    name: Build, macOS Intel (x86_64)
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Get current week (for cache rotation)
+        id: date
+        run: echo "week=$(date +'%Y-%V')" >> $GITHUB_OUTPUT
+
+      - name: Cache pip (macOS x86_64)
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/pip
+          key: pip-mac-x86_64-${{ hashFiles('requirements.txt') }}-${{ steps.date.outputs.week }}
+          restore-keys: |
+            pip-mac-x86_64-${{ hashFiles('requirements.txt') }}-
+            pip-mac-x86_64-
+
+      - name: Cache PyInstaller (macOS x86_64)
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Application Support/pyinstaller
+          key: pyinstaller-mac-x86_64-py3.12-${{ hashFiles('requirements.txt') }}
+          restore-keys: pyinstaller-mac-x86_64-py3.12-
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pyinstaller pillow
+
+      - name: Build .app bundle (x86_64)
+        run: |
+          python -m PyInstaller \
+            --noconfirm --onedir --windowed --clean --noupx \
+            --icon=icon.png \
+            --exclude-module pycryptodomex.selftest \
+            --exclude-module pycryptodomex.tests \
+            --target-arch x86_64 \
+            --name "Video Downloader" \
+            main.py
+
+      - name: Zip portable output (ditto)
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            "dist/Video Downloader.app" \
+            "macOS_x86_64-portable.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VideoDownloader-macOS-x86_64
+          path: macOS_x86_64-portable.zip
