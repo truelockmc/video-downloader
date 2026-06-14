@@ -1,4 +1,3 @@
-curl-cffi>=0.15.0
-yt-dlp
+yt-dlp[default,curl-cffi]
 PyQt6
 pycryptodomex #for hls downloads
