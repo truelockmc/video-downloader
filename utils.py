@@ -51,6 +51,63 @@ TEST_URL = (
     "https://ipv4.download.thinkbroadband.com/1MB.zip"  # 1MB test file for speed test
 )
 
+# Each run gets its own file: videodownloader_2026-06-16_14-23-05.log
+
+
+def _new_log_file() -> str:
+    """Return a timestamped log path for this run and prune old logs (keep 3 total)."""
+    ts = time.strftime("%Y-%m-%d_%H-%M-%S")
+    log_dir = _config_dir()
+    path = os.path.join(log_dir, f"videodownloader_{ts}.log")
+    # Touch the new file first so it appears in the glob, then prune oldest
+    open(path, "w").close()
+    existing = sorted(glob.glob(os.path.join(log_dir, "videodownloader_*.log")))
+    for old in existing[:-3]:
+        try:
+            os.remove(old)
+        except Exception:
+            pass
+    return path
+
+
+LOG_FILE = _new_log_file()
+
+
+class _Tee:
+    """Wraps a stream (stdout or stderr) and copies every write to a log file."""
+
+    def __init__(self, original, log_file: str):
+        self._orig = original
+        self._file = open(log_file, "w", encoding="utf-8")
+
+    def write(self, data: str) -> int:
+        self._orig.write(data)
+        if data:
+            self._file.write(data)
+            self._file.flush()
+        return len(data)
+
+    def flush(self):
+        self._orig.flush()
+        try:
+            self._file.flush()
+        except Exception:
+            pass
+
+    def __getattr__(self, name):
+        return getattr(self._orig, name)
+
+
+def _setup_output_tee() -> None:
+    """Redirect stdout and stderr so every print() also lands in LOG_FILE."""
+    if isinstance(sys.stdout, _Tee):
+        return  # already set up
+    sys.stdout = _Tee(sys.stdout, LOG_FILE)
+    sys.stderr = _Tee(sys.stderr, LOG_FILE)
+
+
+_setup_output_tee()
+
 # ---------------------------------------------------------------------------
 # Deno helpers
 # ---------------------------------------------------------------------------
@@ -128,7 +185,8 @@ def find_deno_in_path() -> str:
 def download_deno(target_dir: str | None = None) -> str:
     """
     Download the Deno binary for the current platform into *target_dir*
-    (defaults to the persistent config directory)
+    (defaults to the persistent app-support directory, which survives
+    PyInstaller restarts unlike the temporary _MEIxxxxxx extraction folder).
     Returns the full path to the extracted executable.
     Raises on failure.
     """
@@ -138,10 +196,10 @@ def download_deno(target_dir: str | None = None) -> str:
     url, archive_name = _deno_asset_url()
     archive_path = os.path.join(target_dir, archive_name)
 
-    print(f"[deno] Downloading {url} …")
+    print(f"Deno: downloading {url} …")
     urllib.request.urlretrieve(url, archive_path)
 
-    print(f"[deno] Extracting {archive_name} …")
+    print(f"Deno: extracting {archive_name} …")
     with zipfile.ZipFile(archive_path, "r") as zf:
         zf.extractall(target_dir)
     os.remove(archive_path)
@@ -278,17 +336,23 @@ def network_speed_test():
 
 
 def load_or_create_config():
+    print(f"load_or_create_config: config path = {CONFIG_FILE}")
     config = configparser.ConfigParser()
     if os.path.exists(CONFIG_FILE):
         config.read(CONFIG_FILE)
         if "DownloadOptions" in config:
             # Backfill deno_path key if missing (upgrading from older config)
             if "deno_path" not in config["DownloadOptions"]:
+                print(f"Config loaded (backfilling missing deno_path): {CONFIG_FILE}")
                 config["DownloadOptions"]["deno_path"] = find_deno_in_path()
                 with open(CONFIG_FILE, "w") as f:
                     config.write(f)
+            else:
+                print(f"Config loaded: {CONFIG_FILE}")
             return config
+    print(f"No config found, running speed test to create one: {CONFIG_FILE}")
     speed = network_speed_test()
+    print(f"Speed test result: {speed} MB/s")
     if speed >= 5:
         concurrent_fragments = "10"
         http_chunk_size = "4194304"
@@ -308,8 +372,12 @@ def load_or_create_config():
         "max_concurrent_downloads": max_concurrent,
         "deno_path": find_deno_in_path(),
     }
-    with open(CONFIG_FILE, "w") as configfile:
-        config.write(configfile)
+    try:
+        with open(CONFIG_FILE, "w") as configfile:
+            config.write(configfile)
+        print(f"Config created: {CONFIG_FILE}")
+    except OSError as e:
+        print(f"Failed to write config to {CONFIG_FILE}: {e}")
     return config
 
 

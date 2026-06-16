@@ -76,7 +76,7 @@ This application stores its configuration and logs in a user-writable directory.
 **Files in that directory:**
 
 - `download_config.ini` - download settings (speed tier, output folder, Deno path)
-- `videodownloader.log` - application log, capped at ~5 MB (2 × 2.5 MB rotating backups)
+- `videodownloader.log` - application log, capped at 3 files
 - `deno(.exe)` - if you chose to automatically download deno
 
 To troubleshoot a silent crash (e.g. the app closes immediately without showing a window), check the log file.
