@@ -28,7 +28,7 @@ from PyQt6 import QtWidgets
 def _config_dir() -> str:
     """
     macOS   → ~/Library/Application Support/VideoDownloader
-    Windows → %APPDATA%\VideoDownloader
+    Windows → %APPDATA%\\VideoDownloader
     Linux   → ~/.config/VideoDownloader
     """
     system = platform.system().lower()
@@ -112,7 +112,7 @@ _setup_output_tee()
 # Deno helpers
 # ---------------------------------------------------------------------------
 
-_DENO_VERSION = "2.8.3"  # pinned; bump here to upgrade
+_DENO_VERSION = "2.3.3"  # pinned; bump here to upgrade
 
 
 def _deno_asset_url() -> tuple[str, str]:
@@ -316,16 +316,13 @@ def install_ffmpeg():
 
 
 def network_speed_test():
+    # Uses urllib instead of curl_cffi to avoid libcurl double-free crashes
+    # that occur with impersonate+stream on some Linux/venv setups.
     try:
         start_time = time.time()
-        response = requests.get(
-            TEST_URL, stream=True, timeout=10, impersonate="chrome136"
-        )
-        total = 0
-        chunk_size = 1024 * 1024  # 1 MB
-        for chunk in response.iter_content(chunk_size=chunk_size):
-            total += len(chunk)
-            break
+        with urllib.request.urlopen(TEST_URL, timeout=10) as resp:
+            chunk = resp.read(1024 * 1024)  # read 1 MB
+        total = len(chunk)
         duration = time.time() - start_time
         if duration == 0:
             duration = 0.1
