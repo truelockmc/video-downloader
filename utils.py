@@ -54,20 +54,21 @@ TEST_URL = (
 # Each run gets its own file: videodownloader_2026-06-16_14-23-05.log
 
 
-def _new_log_file() -> str:
-    """Return a timestamped log path for this run and prune old logs (keep 3 total)."""
-    ts = time.strftime("%Y-%m-%d_%H-%M-%S")
-    log_dir = _config_dir()
-    path = os.path.join(log_dir, f"videodownloader_{ts}.log")
-    # Touch the new file first so it appears in the glob, then prune oldest
-    open(path, "w").close()
-    existing = sorted(glob.glob(os.path.join(log_dir, "videodownloader_*.log")))
-    for old in existing[:-3]:
-        try:
-            os.remove(old)
-        except Exception:
-            pass
-    return path
+def _new_log_file() -> str | None:
+    try:
+        ts = time.strftime("%Y-%m-%d_%H-%M-%S")
+        log_dir = _config_dir()
+        path = os.path.join(log_dir, f"videodownloader_{ts}.log")
+        open(path, "w").close()
+        existing = sorted(glob.glob(os.path.join(log_dir, "videodownloader_*.log")))
+        for old in existing[:-3]:
+            try:
+                os.remove(old)
+            except Exception:
+                pass
+        return path
+    except Exception:
+        return None
 
 
 LOG_FILE = _new_log_file()
@@ -100,6 +101,8 @@ class _Tee:
 
 def _setup_output_tee() -> None:
     """Redirect stdout and stderr so every print() also lands in LOG_FILE."""
+    if LOG_FILE is None:
+        return  # no writable log path (e.g. Wine / restricted env)
     if isinstance(sys.stdout, _Tee):
         return  # already set up
     sys.stdout = _Tee(sys.stdout, LOG_FILE)
