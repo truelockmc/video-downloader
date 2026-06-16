@@ -1,3 +1,8 @@
+# Disclaimer
+### This file has been generated using AI and has been reviwed by a human.
+### It may be outdated and and should be updated.
+### For now it should give you a general ovrrview on how to use the projects CLI
+
 # Command-line Interface (CLI) — Video Downloader
 
 This document describes the command-line interface (CLI) of the Video Downloader project. The CLI is a lightweight, interactive (or scriptable) frontend that re-uses the same download logic and network-tuned options as the GUI download worker, so downloads started from the CLI behave the same way as those from the GUI.
