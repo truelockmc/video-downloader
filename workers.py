@@ -391,7 +391,13 @@ class MetadataWorker(QtCore.QThread):
             except Exception:
                 pixmap = None
         self.metadata_signal.emit(
-            {"title": title, "thumbnail": pixmap, "filesize": filesize_str}
+            {
+                "title": title,
+                "thumbnail": pixmap,
+                "filesize": filesize_str,
+                "formats": info.get("formats") or [],
+                "ext": info.get("ext", "mp4"),
+            }
         )
 
 
@@ -535,45 +541,56 @@ class DownloadWorker(QtCore.QThread):
             # but assume user provided the intended filename.
         # Otherwise fall back to metadata/title-based outtmpl later
 
-        metadata = None
         if self.cached_metadata:
+            try:
+                # Use cached data from MetadataWorker
+                info = self.cached_metadata
+                formats = info.get("formats") or []
+                title = info.get("title", self.url)
+                ext = info.get("ext", "mp4")
+                self.size_signal.emit(info.get("filesize", "Unknown"))
+            except Exception as e:
+                self.error_signal.emit(friendly_error(str(e)))
+                return
+        elif not self.forced_outtmpl:
+            # No cache -> refetch
             try:
                 if "outtmpl" not in ydl_opts:
                     ydl_opts["outtmpl"] = os.path.join(self.folder, "%(title)s.%(ext)s")
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(self.url, download=False)
-                self._log_available_formats(info)
-
                 formats = info.get("formats") or []
-                has_video = any(
-                    (f.get("vcodec") and f.get("vcodec") != "none") for f in formats
-                )
-
                 title = info.get("title", self.url)
-                self.title_signal.emit(title)
                 ext = info.get("ext", "mp4")
-                if not self.forced_outtmpl:
-                    safe_title = sanitize_filename(title)
-                    self.current_outtmpl = os.path.join(
-                        self.folder, f"{safe_title}.{ext}"
-                    )
-                    ydl_opts["outtmpl"] = os.path.join(
-                        self.folder, f"{safe_title}.%(ext)s"
-                    )
-
-                if not has_video:
-                    print(
-                        "[debug] No video codecs detected in formats -> falling back to 'best' single-file format."
-                    )
-                    ydl_opts["format"] = "best"
-                    ydl_opts.pop("merge_output_format", None)
-                    ydl_opts.pop("postprocessor_args", None)
-
                 filesize = info.get("filesize") or info.get("filesize_approx")
                 self.size_signal.emit(format_filesize(filesize))
             except Exception as e:
                 self.error_signal.emit(friendly_error(str(e)))
                 return
+        else:
+            info, formats, title, ext = None, [], self.url, "mp4"
+
+        if info is not None:
+            self._log_available_formats(
+                info
+                if isinstance(info, dict) and "formats" in info
+                else {"formats": formats}
+            )
+            has_video = any(
+                (f.get("vcodec") and f.get("vcodec") != "none") for f in formats
+            )
+            self.title_signal.emit(title)
+            if not self.forced_outtmpl:
+                safe_title = sanitize_filename(title)
+                self.current_outtmpl = os.path.join(self.folder, f"{safe_title}.{ext}")
+                ydl_opts["outtmpl"] = os.path.join(self.folder, f"{safe_title}.%(ext)s")
+            if not has_video:
+                print(
+                    "[debug] No video codecs detected in formats -> falling back to 'best' single-file format."
+                )
+                ydl_opts["format"] = "best"
+                ydl_opts.pop("merge_output_format", None)
+                ydl_opts.pop("postprocessor_args", None)
 
         # Now perform download
         print("[debug] Final ydl_opts format=", ydl_opts.get("format"))
