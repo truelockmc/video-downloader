@@ -1093,7 +1093,7 @@ def check_deno_at_startup(app_config):
     - If the config already points to a working Deno binary → silent pass.
     - Otherwise → show an informational dialog that explains why Deno is needed,
       then offer three choices:
-        1. Download automatically (placed next to this script).
+        1. Download automatically (placed in config-dir).
         2. Browse for an existing executable manually.
         3. Continue without Deno (YouTube format selection will be limited).
     Updates the config in place and persists the choice.
@@ -1128,23 +1128,23 @@ def check_deno_at_startup(app_config):
     clicked = msg.clickedButton()
 
     if clicked == download_btn:
-        # --- Check if a valid Deno binary already exists next to this script ---
-        target_dir = os.path.dirname(os.path.abspath(__file__))
+        # --- Check if a valid Deno binary already exists in the config dir ---
+        from utils import _config_dir, _is_valid_deno_executable
+
+        target_dir = _config_dir()
         exe_name = "deno.exe" if sys.platform == "win32" else "deno"
         local_deno = os.path.join(target_dir, exe_name)
-
-        from utils import _is_valid_deno_executable
 
         if _is_valid_deno_executable(local_deno):
             save_deno_path(app_config, local_deno)
             QtWidgets.QMessageBox.information(
                 None,
                 "Deno Found",
-                f"An existing Deno binary was found next to the application:\n{local_deno}\n\n"
+                f"An existing Deno binary was found in the config dir:\n{local_deno}\n\n"
                 "The path has been saved to your configuration.",
             )
         else:
-            # --- Download Deno next to this script ---
+            # --- Download Deno into the persistent config dir ---
             progress = QtWidgets.QProgressDialog(
                 "Downloading Deno runtime…", "Cancel", 0, 0
             )

@@ -20,7 +20,33 @@ import zipfile
 from curl_cffi import requests
 from PyQt6 import QtWidgets
 
-CONFIG_FILE = "download_config.ini"
+# ---------------------------------------------------------------------------
+# Path helpers (PyInstaller-safe)
+# ---------------------------------------------------------------------------
+
+
+def _config_dir() -> str:
+    """
+    macOS   → ~/Library/Application Support/VideoDownloader
+    Windows → %APPDATA%\VideoDownloader
+    Linux   → ~/.config/VideoDownloader
+    """
+    system = platform.system().lower()
+    if system == "darwin":
+        base = os.path.join(
+            os.path.expanduser("~"), "Library", "Application Support", "VideoDownloader"
+        )
+    elif system == "windows":
+        base = os.path.join(
+            os.environ.get("APPDATA", os.path.expanduser("~")), "VideoDownloader"
+        )
+    else:
+        base = os.path.join(os.path.expanduser("~"), ".config", "VideoDownloader")
+    os.makedirs(base, exist_ok=True)
+    return base
+
+
+CONFIG_FILE = os.path.join(_config_dir(), "download_config.ini")
 TEST_URL = (
     "https://ipv4.download.thinkbroadband.com/1MB.zip"  # 1MB test file for speed test
 )
@@ -29,7 +55,7 @@ TEST_URL = (
 # Deno helpers
 # ---------------------------------------------------------------------------
 
-_DENO_VERSION = "2.3.3"  # pinned; bump here to upgrade
+_DENO_VERSION = "2.8.3"  # pinned; bump here to upgrade
 
 
 def _deno_asset_url() -> tuple[str, str]:
@@ -102,12 +128,12 @@ def find_deno_in_path() -> str:
 def download_deno(target_dir: str | None = None) -> str:
     """
     Download the Deno binary for the current platform into *target_dir*
-    (defaults to the directory of this script).
+    (defaults to the persistent config directory)
     Returns the full path to the extracted executable.
     Raises on failure.
     """
     if target_dir is None:
-        target_dir = os.path.dirname(os.path.abspath(__file__))
+        target_dir = _config_dir()
 
     url, archive_name = _deno_asset_url()
     archive_path = os.path.join(target_dir, archive_name)

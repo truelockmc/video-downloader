@@ -63,9 +63,27 @@ _(or just run the Executable you got from releases)_
 
 Upon launching, the UI will allow you to input a video URL, choose a download folder, select a file format, and configure quality settings. The downloader will then extract metadata, display a preview, and manage the download process.
 
+## Configuration & Log Files
+
+This application stores its configuration and logs in a user-writable directory.
+
+| Platform | Path |
+|----------|------|
+| macOS | `~/Library/Application Support/VideoDownloader/` |
+| Windows | `%APPDATA%\VideoDownloader\` |
+| Linux | `~/.config/VideoDownloader/` |
+
+**Files in that directory:**
+
+- `download_config.ini` - download settings (speed tier, output folder, Deno path)
+- `videodownloader.log` - application log, capped at ~5 MB (2 × 2.5 MB rotating backups)
+- `deno(.exe)` - if you chose to automatically download deno
+
+To troubleshoot a silent crash (e.g. the app closes immediately without showing a window), check the log file.
+
 ## Additonally supported Sites:
 - [Videasy](https://www.videasy.net/player), a known 🏴‍☠️ video Provider Site. (You cannot directly input the player link, you need to get the .m3u8 Link) [Here's how](https://github.com/truelockmc/video-downloader/blob/main/Docs/videasy.md). This also works for similiar Websites.
-
+- Every site using cloudflare anti-bot protection
 
 ## Help
 
