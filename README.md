@@ -80,6 +80,8 @@ This application stores its configuration and logs in a user-writable directory.
 - `deno(.exe)` - if you chose to automatically download deno
 
 To troubleshoot a silent crash (e.g. the app closes immediately without showing a window), check the log file.
+> [!IMPORTANT]
+> On Windows, logging is only going to work if you start the executable using your cmd.
 
 ## Additonally supported Sites:
 - [Videasy](https://www.videasy.net/player), a known 🏴‍☠️ video Provider Site. (You cannot directly input the player link, you need to get the .m3u8 Link) [Here's how](https://github.com/truelockmc/video-downloader/blob/main/Docs/videasy.md). This also works for similiar Websites.
