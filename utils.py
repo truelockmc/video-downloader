@@ -79,23 +79,42 @@ class _Tee:
 
     def __init__(self, original, log_file: str):
         self._orig = original
-        self._file = open(log_file, "w", encoding="utf-8")
+        try:
+            self._file = open(log_file, "w", encoding="utf-8")
+        except Exception:
+            self._file = None
 
     def write(self, data: str) -> int:
-        self._orig.write(data)
-        if data:
-            self._file.write(data)
-            self._file.flush()
+        if self._orig is not None:
+            try:
+                self._orig.write(data)
+            except Exception:
+                pass
+        if data and self._file is not None:
+            try:
+                self._file.write(data)
+                self._file.flush()
+            except Exception:
+                pass
         return len(data)
 
     def flush(self):
-        self._orig.flush()
-        try:
-            self._file.flush()
-        except Exception:
-            pass
+        if self._orig is not None:
+            try:
+                self._orig.flush()
+            except Exception:
+                pass
+        if self._file is not None:
+            try:
+                self._file.flush()
+            except Exception:
+                pass
 
     def __getattr__(self, name):
+        # sys.stdout/sys.stderr can be None under --windowed builds on Windows
+        # (no console attached), so there's nothing to delegate to.
+        if self._orig is None:
+            raise AttributeError(name)
         return getattr(self._orig, name)
 
 
