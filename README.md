@@ -3,8 +3,8 @@
 [![Issues Badge](https://img.shields.io/github/issues/truelockmc/video-downloader?style=for-the-badge)](https://github.com/truelockmc/video-downloader/issues)
 [![Closed Issues Badge](https://img.shields.io/github/issues-closed/truelockmc/video-downloader?color=%238256d0&style=for-the-badge)](https://github.com/truelockmc/video-downloader/issues?q=is%3Aissue+is%3Aclosed)<br>
 
-[![GitHub](https://img.shields.io/badge/GitHub-truelockmc%2Fvideo_downloader-181717?style=for-the-badge&logo=github)](https://github.com/truelockmc/vid-dl-cli-only)
-[![Codeberg](https://img.shields.io/badge/Codeberg-truelockmc%2Fvideo_downloader-2185D0?style=for-the-badge&logo=codeberg)](https://codeberg.org/truelockmc/vid-dl-cli-only)
+[![GitHub](https://img.shields.io/badge/GitHub-truelockmc%2Fvideo_downloader-181717?style=for-the-badge&logo=github)](https://github.com/truelockmc/video-downloader)
+[![Codeberg](https://img.shields.io/badge/Codeberg-truelockmc%2Fvideo_downloader-2185D0?style=for-the-badge&logo=codeberg)](https://codeberg.org/truelockmc/video-downloader)
 
 # Python Video Downloader by true_lock
 
