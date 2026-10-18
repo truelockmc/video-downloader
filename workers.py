@@ -17,8 +17,12 @@ from PyQt6 import QtCore, QtGui
 
 from utils import (
     format_filesize,
+    FALLBACK_USER_AGENTS,
+    REFERER_DOMAINS,
     friendly_error,
-    get_videasy_headers,
+    get_base_headers,
+    get_domain_headers,
+    is_forbidden_error,
     sanitize_filename,
 )
 
@@ -137,9 +141,10 @@ def build_ydl_opts(
         "extractor_args": {
             "generic": {"impersonate": ["chrome"]},
         },
-        # Send Videasy-compatible headers on all requests, including ffmpeg segment downloads.
+        # Send browser-like headers on all requests, including ffmpeg segment downloads.
         # http_headers is forwarded to ffmpeg via -headers, so these must be set explicitly.
-        "http_headers": get_videasy_headers(),
+        # On 403, run_with_header_fallback() retries with Origin/Referer from REFERER_DOMAINS.
+        "http_headers": get_base_headers(),
         # Enable Deno as JS runtime (searches PATH by default).
         # yt-dlp needs this for YouTube signature/nsig solving to get all formats.
         # If a specific path is configured it will be set below.
@@ -192,6 +197,48 @@ def build_ydl_opts(
         ydl_opts["merge_output_format"] = "mp4"
         ydl_opts["postprocessor_args"] = ["-c", "copy"]
     return ydl_opts
+
+
+def run_with_header_fallback(
+    action, ydl_opts, preferred_headers=None, cancelled_cb=None
+):
+    """
+    Run action(opts) and, if it fails with a 403, retry it once per entry of
+    REFERER_DOMAINS using that domain as Origin and Referer, and again for each
+    FALLBACK_USER_AGENTS entry combined with that domain.
+    """
+    base_headers = dict(ydl_opts.get("http_headers") or get_base_headers())
+
+    attempts = []  # list of (label, headers), duplicates skipped
+
+    def _add(label, headers):
+        if all(headers != h for _, h in attempts):
+            attempts.append((label, headers))
+
+    if preferred_headers:
+        _add("previously working headers", dict(preferred_headers))
+    _add("default headers", base_headers)
+    for domain in REFERER_DOMAINS:
+        _add(domain, get_domain_headers(domain, base_headers))
+        for ua in FALLBACK_USER_AGENTS:
+            _add(f"{domain} + UA '{ua[:40]}...'", get_domain_headers(domain, base_headers, ua))
+
+    last_exc = None
+    for idx, (label, headers) in enumerate(attempts):
+        if cancelled_cb and cancelled_cb():
+            raise Exception("Cancelled")
+        if idx > 0:
+            print(f"[headers] Retrying with {label} ...")
+        opts = dict(ydl_opts)
+        opts["http_headers"] = headers
+        try:
+            return action(opts), headers
+        except Exception as e:
+            if not is_forbidden_error(e):
+                raise
+            print(f"[headers] 403/forbidden with {label}")
+            last_exc = e
+    raise last_exc
 
 
 def _ffmpeg_available():
@@ -360,8 +407,8 @@ class MetadataWorker(QtCore.QThread):
             "js_runtimes": {"deno": {}},
             # Allow fetching the EJS challenge-solver script from GitHub.
             "remote_components": ["ejs:github"],
-            # Send Videasy-compatible headers on every request.
-            "http_headers": get_videasy_headers(),
+            # Browser-like headers; 403 fallback via run_with_header_fallback().
+            "http_headers": get_base_headers(),
         }
 
         def _extract(opts):
@@ -369,7 +416,7 @@ class MetadataWorker(QtCore.QThread):
                 return ydl.extract_info(self.url, download=False)
 
         try:
-            info = _extract(ydl_opts)
+            info, used_headers = run_with_header_fallback(_extract, ydl_opts)
         except Exception as e:
             self.error_signal.emit(friendly_error(str(e)))
             return
@@ -397,6 +444,8 @@ class MetadataWorker(QtCore.QThread):
                 "filesize": filesize_str,
                 "formats": info.get("formats") or [],
                 "ext": info.get("ext", "mp4"),
+                # Headers that got through, reused by DownloadWorker
+                "used_headers": used_headers,
             }
         )
 
@@ -437,7 +486,7 @@ class DownloadWorker(QtCore.QThread):
         self._paused = False
         self._cancelled = False
         self.current_outtmpl = None
-        self._used_videasy_headers = False
+        self._working_headers = None  # headers that passed the 403 check
 
     def progress_hook(self, d):
         if self._cancelled:
@@ -545,6 +594,7 @@ class DownloadWorker(QtCore.QThread):
             try:
                 # Use cached data from MetadataWorker
                 info = self.cached_metadata
+                self._working_headers = info.get("used_headers")
                 formats = info.get("formats") or []
                 title = info.get("title", self.url)
                 ext = info.get("ext", "mp4")
@@ -557,8 +607,14 @@ class DownloadWorker(QtCore.QThread):
             try:
                 if "outtmpl" not in ydl_opts:
                     ydl_opts["outtmpl"] = os.path.join(self.folder, "%(title)s.%(ext)s")
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(self.url, download=False)
+
+                def _extract(opts):
+                    with yt_dlp.YoutubeDL(opts) as ydl:
+                        return ydl.extract_info(self.url, download=False)
+
+                info, self._working_headers = run_with_header_fallback(
+                    _extract, ydl_opts, cancelled_cb=lambda: self._cancelled
+                )
                 formats = info.get("formats") or []
                 title = info.get("title", self.url)
                 ext = info.get("ext", "mp4")
@@ -596,9 +652,17 @@ class DownloadWorker(QtCore.QThread):
         print("[debug] Final ydl_opts format=", ydl_opts.get("format"))
         print("[debug] ffmpeg available=", _ffmpeg_available())
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        def _download(opts):
+            with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([self.url])
+
+        try:
+            run_with_header_fallback(
+                _download,
+                ydl_opts,
+                preferred_headers=self._working_headers,
+                cancelled_cb=lambda: self._cancelled,
+            )
             self.finished_signal.emit()
         except Exception as e:
             # cleanup partially downloaded files

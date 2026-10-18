@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Helper Functions: ffmpeg-check/install, deno-check/download, network speed test,
-config, Videasy-Header builder and cleanup helper.
+config, HTTP header builders (with domain fallback list) and cleanup helper.
 """
 
 import configparser
@@ -14,6 +14,7 @@ import stat
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -485,12 +486,27 @@ def friendly_error(raw: str) -> str:
     return cleaned[:120] + ("…" if len(cleaned) > 120 else "")
 
 
-def get_videasy_headers():
+# Domains used as Origin/Referer, one after another, when a request fails with 403.
+# Entries may be bare hosts ("example.com") or full URLs ("https://example.com/").
+# Order matters: the first domain that gets past the 403 "wins".
+REFERER_DOMAINS = [
+    "vsembed.su",
+    "aether.ist",
+    "embed.vidrift.net",
+    "sansa.stravers.live",
+]
+
+FALLBACK_USER_AGENTS = [
+    "Mozilla/5.0 (X11; Linux x86_64; rv:158.0) Gecko/20100101 Firefox/158.0",
+]
+
+
+def get_base_headers():
     """
-    Headers that mirror what the browser sends for Videasy-hosted streams.
+    Browser-like default headers without Origin/Referer.
     The User-Agent must be explicitly included: yt-dlp passes http_headers
     to ffmpeg via -headers, but the impersonate UA is NOT automatically
-    forwarded to ffmpeg segment downloads .
+    forwarded to ffmpeg segment downloads.
     """
     return {
         "User-Agent": (
@@ -498,14 +514,43 @@ def get_videasy_headers():
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/136.0.0.0 Safari/537.36"
         ),
-        "Origin": "https://player.videasy.to",
-        "Referer": "https://player.videasy.to/",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "cross-site",
         "DNT": "1",
         "Accept-Language": "en-US,en;q=0.9",
     }
+
+
+def get_domain_headers(domain, base=None, user_agent=None):
+    """
+    Return `base` (default: get_base_headers()) extended with Origin and Referer
+    for the given domain, mirroring what a browser sends from that site.
+    If user_agent is given it replaces the User-Agent of `base`.
+    """
+    domain = domain.strip()
+    if "://" not in domain:
+        domain = "https://" + domain
+    parsed = urllib.parse.urlparse(domain)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+
+    headers = dict(base) if base else get_base_headers()
+    headers.update(
+        {
+            "Origin": origin,
+            "Referer": origin + "/",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "cross-site",
+            "Accept": "*/*",
+        }
+    )
+    if user_agent:
+        headers["User-Agent"] = user_agent
+    return headers
+
+
+def is_forbidden_error(raw) -> bool:
+    """True if an exception/message looks like an HTTP 403."""
+    s = str(raw).lower()
+    return "403" in s or "forbidden" in s
 
 
 def cleanup_download_folder(folder):

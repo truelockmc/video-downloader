@@ -8,7 +8,6 @@ from typing import List, Optional
 import yt_dlp
 
 from utils import (
-    get_videasy_headers,
     load_or_create_config,
     unique_filename,
 )
@@ -17,6 +16,7 @@ from workers import (
     _download_direct,
     _is_direct_download_url,
     build_ydl_opts,
+    run_with_header_fallback,
 )
 
 RESOLUTIONS = ["best", "1080", "720", "480", "360"]
@@ -492,33 +492,19 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             print(f"\nDownload failed: {e}")
             return 1
 
-    # Perform download via yt-dlp; retry on 403 with Videasy headers
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    # Perform download via yt-dlp; on 403 retry with each domain in REFERER_DOMAINS
+    # as Origin/Referer (same logic as the GUI workers).
+    def _download(opts):
+        with yt_dlp.YoutubeDL(opts) as ydl:
             ydl.download([url])
+
+    try:
+        run_with_header_fallback(_download, ydl_opts)
         print("\nDownload finished.")
         return 0
     except Exception as e:
-        err = str(e).lower()
-        if "403" in err or "forbidden" in err:
-            print("\nReceived 403/forbidden, retrying with special Videasy headers...")
-            try:
-                ydl_opts_with_headers = dict(ydl_opts)
-                ydl_opts_with_headers["http_headers"] = get_videasy_headers()
-                ydl_opts_with_headers["logger"] = cli_logger
-                ydl_opts_with_headers["progress_hooks"] = [
-                    make_progress_hook(cli_logger)
-                ]
-                with yt_dlp.YoutubeDL(ydl_opts_with_headers) as ydl:
-                    ydl.download([url])
-                print("\nDownload finished (with headers).")
-                return 0
-            except Exception as e2:
-                print("\nDownload failed:", e2)
-                return 1
-        else:
-            print("\nDownload failed:", e)
-            return 1
+        print("\nDownload failed:", e)
+        return 1
 
 
 if __name__ == "__main__":
