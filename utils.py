@@ -490,10 +490,11 @@ def friendly_error(raw: str) -> str:
 # Entries may be bare hosts ("example.com") or full URLs ("https://example.com/").
 # Order matters: the first domain that gets past the 403 "wins".
 REFERER_DOMAINS = [
-    "vsembed.su",
-    "aether.ist",
-    "embed.vidrift.net",
-    "sansa.stravers.live",
+    "vsembed.su", # vidsrc
+    "aether.ist", # aether
+    "embed.vidrift.net", # vidrift
+    "sansa.stravers.live", # KinoHub (ru)
+    "dr0pstream.com", # dropload
 ]
 
 FALLBACK_USER_AGENTS = [
